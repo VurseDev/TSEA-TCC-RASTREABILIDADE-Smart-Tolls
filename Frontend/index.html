@@ -1,0 +1,2076 @@
+﻿<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TSEA Industrial Control</title>
+    <style>
+        /* MANTIDO SEU CSS ORIGINAL INTEGRALMENTE */
+        :root { --tsea-red: #ff0000; --bg: #000; --card: #121212; --gray: #2d2d2d; --green: #28a745; --blue: #0056b3; --yellow: #ffcc00; }
+        body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; margin: 0; overflow-x: hidden; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--tsea-red); padding: 15px 20px; }
+        .btn-logout { background: transparent; color: var(--tsea-red); border: 1px solid var(--tsea-red); padding: 8px 20px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; }
+        .stat-card { background: var(--card); padding: 20px; border-left: 4px solid var(--tsea-red); }
+        .filter-bar { display: flex; gap: 10px; padding: 0 20px 10px 20px; flex-wrap: wrap; }
+        .btn-filter { background: var(--gray); border: none; color: white; padding: 10px 15px; cursor: pointer; border-radius: 3px; font-size: 12px; }
+        .search-container { padding: 0 20px 20px 20px; }
+        .search-input { width: 100%; background: #1a1a1a; border: 1px solid #333; color: white; padding: 12px; border-radius: 5px; outline: none; }
+        .table-container { padding: 0 20px; }
+        table { width: 100%; border-collapse: collapse; background: var(--card); }
+        th { background: #1a1a1a; padding: 15px; text-align: left; color: var(--tsea-red); font-size: 0.8rem; }
+        td { padding: 15px; border-bottom: 1px solid #222; font-size: 14px; }
+        .container-center { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
+        .main-card { background: var(--card); border: 1px solid #222; padding: 50px; border-radius: 25px; width: 500px; text-align: center; position: relative; }
+        .laser-line { position: absolute; width: 95%; height: 2px; background: var(--tsea-red); box-shadow: 0 0 12px var(--tsea-red); top: 55%; left: 2.5%; pointer-events: none; z-index: 0; }
+        .input-scan { position: relative; z-index: 1; background: transparent; border: 1px solid #333; color: white; padding: 18px; text-align: center; font-size: 1.4rem; width: 100%; margin-top: 20px; border-radius: 8px; }
+        .btn-cadastro { background: none; border: 1px dashed #555; color: #888; padding: 10px; margin-top: 30px; cursor: pointer; border-radius: 5px; width: 100%; transition: 0.3s; }
+        .btn-cadastro:hover { border-color: var(--tsea-red); color: white; }
+        .bell-btn { background: none; border: none; font-size: 20px; cursor: pointer; position: relative; color: white; }
+        .alert-dot { position: absolute; top: 0; right: 0; width: 10px; height: 10px; background: red; border-radius: 50%; }
+        .session-timer { color: var(--yellow); font-family: monospace; font-weight: bold; }
+        #modalNotificacao { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 350px; background: #111; border: 1px solid red; padding: 20px; z-index: 2000; display: none; }
+        /* No seu <style> */
+.setor-S { border-left: 10px solid #ffcc00; } /* Solda - Amarelo */
+.setor-M { border-left: 10px solid #0056b3; } /* Montagem - Azul */
+.setor-P { border-left: 10px solid #28a745; } /* Pintura - Verde */
+
+.badge-ferramenta {
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.filter-bar {
+    display: flex;
+    gap: 10px;
+    padding: 10px 20px;
+    background: #1a1a1a;
+    margin: 0 20px 10px 20px;
+    border-radius: 5px;
+    align-items: center;
+}
+
+.btn-filter {
+    background: #333;
+    color: white;
+    border: 1px solid #444;
+    padding: 8px 15px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    transition: 0.3s;
+}
+
+.btn-filter:hover {
+    background: var(--tsea-red);
+    border-color: var(--tsea-red);
+}
+
+.menu-item {
+    padding: 15px;
+    color: #888;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: 0.3s;
+}
+.menu-item:hover, .menu-item.active {
+    background: #111;
+    color: white;
+}
+.setor-card {
+    background: #121212;
+    flex: 1;
+    padding: 40px;
+    border-radius: 10px;
+    text-align: center;
+    font-weight: bold;
+    cursor: pointer;
+    border-top: 3px solid transparent;
+}
+.setor-card:hover { border-top: 3px solid red; background: #181818; }
+
+.status-badge {
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+}
+.status-badge.disponivel { background: #004d00; color: #00ff00; }
+.status-badge.em_uso { background: #333; color: #fff; }
+.status-badge.atrasado { background: #4d0000; color: #ff0000; }
+
+.progress-bar {
+    width: 100px;
+    height: 6px;
+    background: #222;
+    border-radius: 3px;
+    position: relative;
+}
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    width: 65%;
+    height: 100%;
+    background: #00ff00;
+    border-radius: 3px;
+}
+.status-badge.em_uso { background: #333; color: #fff; border: 1px solid #555; }
+.status-badge.atrasado { background: #4d0000; color: #ff4444; border: 1px solid red; }
+.status-badge.disponivel { background: #004d00; color: #00ff00; }
+
+   </style>
+</head>
+<body onclick="resetTimer()" onkeypress="resetTimer()">
+
+<div id="app"></div>
+<div id="modalNotificacao"></div>
+
+
+<script>
+    // --- CONFIGURAÇÃO BACKEND ---
+    const API_URL = "http://localhost:5045"; // Ajuste para a porta do seu .NET
+
+    let ativos = []; // Agora será preenchido pelo banco
+    let currentUser = "";
+    let currentUserId = ""; // Guardar o crachá para movimentações
+    let timeLeft = 600;
+    let timerInterval;
+    let usuarioLogado = null;
+    let ativosBackup = [];
+    let ativosDashboardBackup = [];
+    let notificacaoTimer = null;
+    let notificacaoAtiva = false;
+    let ferramentaAtrasada = null;
+
+    // ... (suas funções carregarAtivos, mostrarAdmin, etc)
+
+
+  function filtrarPorCodigo(valor) {
+    const bipado = valor.trim().toUpperCase();
+    
+    if (bipado === "") {
+        renderizarTabelaOficina(ativosBackup);
+        return;
+    }
+
+    const filtrados = ativosBackup.filter(f => {
+        const cod = (f.codigoBarras || f.CodigoBarras || "").toString().toUpperCase();
+        return cod.includes(bipado);
+    });
+
+    renderizarTabelaOficina(filtrados);
+}
+
+function fecharModal() {
+    const modal = document.getElementById('modalCadastro');
+    if (modal) modal.remove();
+}
+
+
+    // 2. COLOQUE ESTA FUNÇÃO NO FINAL DO SCRIPT (Mas antes de mostrarLogin())
+    function filtrarPorSetor(sufixo) {
+        // Se clicar em GERAL (vazio), mostra a lista toda
+        if (!sufixo) {
+            renderizarTabelaAdmin(ativosBackup);
+            return;
+        }
+
+        const filtrados = ativosBackup.filter(f => {
+            // Pegamos o Setor que vem do banco
+            const setorDB = (f.setor || f.Setor || "").toUpperCase();
+            
+            // Pegamos a Descrição (para ver se termina com M, S ou U)
+            const desc = (f.descricao || f.Descricao || "").toUpperCase();
+
+            // Lógica: Filtra se o setor for igual OU se a descrição terminar com a letra
+            if (sufixo === 'MONTAGEM') return setorDB === 'MONTAGEM' || desc.endsWith('M');
+            if (sufixo === 'SOLDAGEM') return setorDB === 'SOLDAGEM' || desc.endsWith('S');
+            if (sufixo === 'USINAGEM') return setorDB === 'USINAGEM' || desc.endsWith('U');
+
+            return setorDB === sufixo.toUpperCase();
+        });
+
+        renderizarTabelaAdmin(filtrados);
+    }
+
+    function resetTimer() { if(currentUser) timeLeft = 600; }
+
+    function startTimer() {
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        if(currentUser) {
+            timeLeft--;
+            const el = document.getElementById('timerText');
+            if(el) {
+                let m = Math.floor(timeLeft/60);
+                let s = (timeLeft%60).toString().padStart(2,'0');
+                el.innerText = `EXPIRA EM: ${m}:${s}`;
+            }
+            if(timeLeft <= 0) {
+                fazerLogout("EXPIRADO"); // Logout automático
+            }
+        }
+    }, 1000);
+}
+    
+
+function filtrarBusca(termo) {
+    const termoLimpo = termo.toUpperCase().trim();
+    
+    // Se o campo estiver vazio, mostra a lista atual do dashboard
+    if (termoLimpo === "") {
+        renderizarTabelaAdmin(ativosDashboardBackup);
+        return;
+    }
+
+    const filtrados = ativosDashboardBackup.filter(f => {
+        const idOriginal = f.id || f.Id || 0;
+        const codigoBarras = `TSEA-${String(idOriginal).padStart(3, '0')}`;
+        return codigoBarras.includes(termoLimpo);
+    });
+
+    renderizarTabelaAdmin(filtrados);
+}
+
+function atualizarBellBadge(tem) {
+    const bell = document.getElementById('bellButton');
+    if (!bell) return;
+    bell.innerHTML = tem ? `🔔 <span class="alert-dot"></span>` : '🔔';
+}
+
+function abrirNotificacaoAtraso() {
+    if (notificacaoAtiva && ferramentaAtrasada) {
+        mostrarNotificacaoAtraso(ferramentaAtrasada);
+        return;
+    }
+
+    const ferramentasAtrasadas = ativosBackup.filter(f => {
+        const status = ((f.status || f.Status || '').toString().toUpperCase());
+        return status === 'EM_USO' || status === 'ATRASADO';
+    });
+
+    if (ferramentasAtrasadas.length === 0) {
+        document.getElementById('modalNotificacao').style.display = 'block';
+        document.getElementById('modalNotificacao').innerHTML = `
+            <h2 style="color: #e60000; margin-top: 0;">Sem avisos</h2>
+            <p>Não há ferramentas atrasadas ou em uso pendente de devolução no momento.</p>
+            <button onclick="document.getElementById('modalNotificacao').style.display='none'" style="width:100%; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">FECHAR</button>
+        `;
+        return;
+    }
+
+    ferramentaAtrasada = ferramentasAtrasadas[0];
+    document.getElementById('modalNotificacao').style.display = 'block';
+    mostrarNotificacaoAtraso(ferramentaAtrasada);
+}
+
+function mostrarNotificacaoAtraso(ferramenta) {
+    const nomeColaborador = ferramenta.colaborador || ferramenta.Colaborador || 'Operador desconhecido';
+    const descricao = ferramenta.descricao || ferramenta.Descricao || 'Ferramenta sem descrição';
+    const codigo = ferramenta.codigoBarras || ferramenta.CodigoBarras || `ID ${ferramenta.id || ferramenta.Id}`;
+    const status = ((ferramenta.status || ferramenta.Status || '').toString().toUpperCase());
+    const motivo = status === 'ATRASADO'
+        ? 'Esta ferramenta já está com status ATRASADO.'
+        : 'Ela ficou em uso por mais de 30 segundos sem devolução.';
+
+    document.getElementById('modalNotificacao').style.display = 'block';
+    document.getElementById('modalNotificacao').innerHTML = `
+        <h2 style="color: #e60000; margin-top: 0;">🚨 Aviso de ferramenta atrasada</h2>
+        <p>O operador <strong>${nomeColaborador}</strong> está com a ferramenta:</p>
+        <p style="font-weight:bold; color:white;">${descricao} (${codigo})</p>
+        <p>${motivo} Envie um aviso para o operador.</p>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button onclick="enviarAvisoAdmin()" style="flex:1; background:#e60000; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">ENVIAR AVISO</button>
+            <button onclick="document.getElementById('modalNotificacao').style.display='none'" style="flex:1; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">FECHAR</button>
+        </div>
+    `;
+}
+
+function abrirNotificacaoAtrasoOperador() {
+    if (!currentUserId) {
+        alert('Erro: usuário não identificado. Faça login novamente.');
+        return;
+    }
+
+    fetch(`${API_URL}/avisos/${encodeURIComponent(currentUserId)}`)
+        .then(res => res.ok ? res.json() : [])
+        .then(avisoLista => {
+            if (!avisoLista || avisoLista.length === 0) {
+                document.getElementById('modalNotificacao').style.display = 'block';
+                document.getElementById('modalNotificacao').innerHTML = `
+                    <h2 style="color: #00cc00; margin-top: 0;">Tudo certo</h2>
+                    <p>Você não possui avisos pendentes enviados pelo administrador.</p>
+                    <button onclick="document.getElementById('modalNotificacao').style.display='none'" style="width:100%; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">FECHAR</button>
+                `;
+                atualizarBellBadge(false);
+                return;
+            }
+
+            const aviso = avisoLista[0];
+            ferramentaAtrasada = aviso;
+            notificacaoAtiva = true;
+            atualizarBellBadge(true);
+            mostrarNotificacaoOperador(aviso);
+        })
+        .catch(err => {
+            console.error('Erro ao buscar avisos do operador:', err);
+        });
+}
+
+function mostrarNotificacaoOperador(aviso) {
+    const mensagem = aviso.mensagem || 'Você recebeu um aviso do administrador.';
+
+    document.getElementById('modalNotificacao').style.display = 'block';
+    document.getElementById('modalNotificacao').innerHTML = `
+        <h2 style="color: #e60000; margin-top: 0;">🔔 Aviso do administrador</h2>
+        <p>${mensagem}</p>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button onclick="marcarAvisoLido(${aviso.id})" style="flex:1; background:#e60000; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">MARCAR COMO LIDO</button>
+            <button onclick="document.getElementById('modalNotificacao').style.display='none'" style="flex:1; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">FECHAR</button>
+        </div>
+    `;
+}
+
+async function marcarAvisoLido(id) {
+    try {
+        const res = await fetch(`${API_URL}/avisos/${id}/lido`, { method: 'POST' });
+        if (res.ok) {
+            notificacaoAtiva = false;
+            atualizarBellBadge(false);
+            document.getElementById('modalNotificacao').style.display = 'none';
+            await carregarAvisosOperador();
+        } else {
+            const text = await res.text();
+            alert('Erro ao marcar aviso como lido: ' + text);
+        }
+    } catch (err) {
+        console.error('Erro ao marcar aviso como lido:', err);
+    }
+}
+
+async function enviarAvisoAdmin() {
+    if (!ferramentaAtrasada) return;
+    const operadorId = ferramentaAtrasada.colaboradorId || ferramentaAtrasada.ColaboradorId || '';
+    const descricao = ferramentaAtrasada.descricao || ferramentaAtrasada.Descricao || 'ferramenta';
+    const codigo = ferramentaAtrasada.codigoBarras || ferramentaAtrasada.CodigoBarras || `ID ${ferramentaAtrasada.id || ferramentaAtrasada.Id}`;
+
+    if (!operadorId) {
+        alert('Não foi possível enviar o aviso: identificador do operador não encontrado.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/avisos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                FerramentaId: ferramentaAtrasada.id || ferramentaAtrasada.Id,
+                UsuarioId: operadorId,
+                Mensagem: `Você está atrasado na entrega da ferramenta ${descricao} (${codigo}). Favor devolver imediatamente.`
+            })
+        });
+
+        if (res.ok) {
+            alert('✅ Aviso enviado ao operador com sucesso!');
+            document.getElementById('modalNotificacao').style.display = 'none';
+        } else {
+            const text = await res.text();
+            alert('Erro ao enviar aviso: ' + text);
+        }
+    } catch (err) {
+        console.error('Erro ao enviar aviso ao operador:', err);
+        alert('Erro de conexão ao enviar aviso.');
+    }
+}
+
+async function limparColaboradoresInvalidos() {
+    if (!confirm('Tem certeza que deseja remover colaboradores não cadastrados das ferramentas?')) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/ferramentas/limpar-colaboradores`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (res.ok) {
+            const resposta = await res.json();
+            alert(`✅ ${resposta.mensagem}`);
+            await mostrarAdmin();
+        } else {
+            const erro = await res.text();
+            alert(`❌ Erro: ${erro}`);
+        }
+    } catch (err) {
+        console.error('Erro ao limpar colaboradores:', err);
+        alert('❌ Erro de conexão ao limpar colaboradores.');
+    }
+}
+
+function agendarNotificacaoDeAtraso(dados) {
+    clearTimeout(notificacaoTimer);
+    notificacaoAtiva = false;
+    ferramentaAtrasada = null;
+    atualizarBellBadge(false);
+
+    const ferramentasEmUso = dados.filter(f => ((f.status || f.Status || '').toString().toUpperCase()) === 'EM_USO');
+    if (ferramentasEmUso.length === 0) return;
+
+    // O admin ainda pode ver ferramentas em uso, mas a notificação de aviso ao operador depende do envio manual
+}
+
+function atualizarCamposAdminCadastro() {
+    const barcode = document.getElementById('cadCracha')?.value.trim().toUpperCase() || "";
+    const adminFields = document.getElementById('adminFields');
+    const mostrar = barcode.endsWith('A');
+    if (adminFields) adminFields.style.display = mostrar ? 'block' : 'none';
+}
+
+async function cadastrarNoBanco() {
+    const nome = document.getElementById('cadNome').value.trim();
+    const barcode = document.getElementById('cadCracha').value.trim().toUpperCase();
+    const setor = barcode.endsWith('A') ? 'ADMIN' : 'OPERADOR';
+
+    if (!nome || !barcode) {
+        alert("Preencha todos os campos!");
+        return;
+    }
+
+    const senha = document.getElementById('cadSenha')?.value || '';
+    const email = document.getElementById('cadEmail')?.value.trim() || '';
+    if (setor === "ADMIN" && !senha) {
+        alert("Senha obrigatória para cadastro de administrador.");
+        return;
+    }
+    if (setor === "ADMIN" && !email) {
+        alert("Email obrigatório para cadastro de administrador.");
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/usuarios/cadastrar`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json' 
+            },
+            // Note que usamos "Barcode" com B maiúsculo para bater com o C#
+            body: JSON.stringify({ 
+                nome: nome, 
+                barcode: barcode, 
+                setor: setor,
+                password: senha,
+                email: email
+            })
+        });
+
+        if (response.ok) {
+            alert("Funcionário cadastrado com sucesso!");
+            mostrarLogin(); // Volta para a tela inicial
+        } else {
+            const erroTexto = await response.text();
+            alert("Erro ao cadastrar: " + erroTexto);
+        }
+    } catch (error) {
+        console.error("Erro na conexão:", error);
+        alert("Não foi possível conectar ao servidor. Verifique se o Backend está rodando.");
+    }
+}
+
+
+
+
+async function realizarLogin() {
+    const barcode = document.getElementById('inputLogin').value;
+    
+    const res = await fetch(`${API_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: barcode })
+    });
+
+    if (res.ok) {
+        const dados = await res.json();
+        
+        // SALVA OS DADOS NA VARIÁVEL GLOBAL
+        usuarioLogado = {
+            nome: dados.nome,
+            tipo: dados.tipo,
+            barcode: barcode
+        };
+
+        if (usuarioLogado.tipo === 'ADMIN') {
+            mostrarAdmin();
+        } else {
+            mostrarOperador();
+        }
+    } else {
+        alert("Usuário não encontrado!");
+    }
+}
+    // --- FUNÇÕES DE CONEXÃO (FETCH) ---
+
+async function loginBackend(barcode) {
+    let cracha  = normalizeScannerBarcode(barcode || document.getElementById('barcode')?.value || '');
+    const senha   = document.getElementById('passwordLogin')?.value || '';
+    const passwordWrapper = document.getElementById('passwordWrapper');
+    const emailArea = document.getElementById('emailCadastroArea');
+    const emailInput = document.getElementById('emailCadastro');
+    const barcodeInput = document.getElementById('barcode');
+
+    if (!cracha) {
+        alert('Digite o crachá antes de entrar.');
+        return;
+    }
+
+    const isAdmin = cracha.endsWith('A');
+
+    // ✅ Se a área de email está visível, o admin clicou ENTRAR para finalizar o cadastro
+    if (isAdmin && emailArea && emailArea.style.display !== 'none') {
+        const email = emailInput?.value.trim();
+        if (!email) {
+            alert('Informe o email para continuar o cadastro.');
+            emailInput?.focus();
+            return;
+        }
+
+        // Tenta cadastrar o admin com os dados fornecidos
+        const nomeInput = prompt('Informe seu nome completo para o cadastro:');
+        if (!nomeInput) return;
+
+        try {
+            const res = await fetch(`${API_URL}/usuarios/cadastrar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    nome: nomeInput.trim(),
+                    barcode: cracha,
+                    setor: 'ADMIN',
+                    password: senha,
+                    email: email
+                })
+            });
+
+            if (res.ok) {
+                alert('✅ Admin cadastrado com sucesso! Faça o login agora.');
+                emailArea.style.display = 'none';
+                emailInput.value = '';
+            } else {
+                const erro = await res.text();
+                alert('❌ Erro ao cadastrar: ' + erro);
+            }
+        } catch (err) {
+            alert('❌ Erro de conexão com o servidor.');
+        }
+        return;
+    }
+
+    // Fluxo normal de login
+    try {
+        const response = await fetch(`${API_URL}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ Barcode: cracha, Password: senha })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            currentUser   = data.nome;
+            currentUserId = cracha;
+
+            usuarioLogado = { nome: data.nome, tipo: data.tipo, barcode: cracha };
+
+            if (data.tipo === 'ADMIN') {
+                mostrarAdmin();
+            } else {
+                startTimer();
+                mostrarOperador();
+            }
+        } else {
+            const texto = await response.text();
+
+            // ✅ Se for admin não cadastrado, mostra campo de email inline
+            if (isAdmin && (texto.includes('não cadastrado') || response.status === 404)) {
+                if (!senha) {
+                    alert('Para cadastrar um novo admin, preencha também a senha acima.');
+                    document.getElementById('passwordLogin')?.focus();
+                    return;
+                }
+                if (emailArea) {
+                    emailArea.style.display = 'block';
+                    emailInput?.focus();
+                }
+                return;
+            }
+
+            // Se for admin e faltar senha, mostra o campo de senha
+            if (isAdmin && texto.includes('Senha obrigatória para login de administrador.')) {
+                if (passwordWrapper) {
+                    passwordWrapper.style.display = 'block';
+                }
+                document.getElementById('passwordLogin')?.focus();
+                return;
+            }
+
+            // Tentativa de fallback se o leitor inseriu um A extra no final e o usuário não existir
+            if (cracha.endsWith('A') && texto.includes('Usuário não cadastrado.')) {
+                const crachaSemA = cracha.slice(0, -1);
+                if (crachaSemA) {
+                    const fallbackResponse = await fetch(`${API_URL}/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                        body: JSON.stringify({ Barcode: crachaSemA, Password: senha })
+                    });
+
+                    if (fallbackResponse.ok) {
+                        const fallbackData = await fallbackResponse.json();
+                        currentUser   = fallbackData.nome;
+                        currentUserId = crachaSemA;
+
+                        usuarioLogado = { nome: fallbackData.nome, tipo: fallbackData.tipo, barcode: crachaSemA };
+                        if (barcodeInput) barcodeInput.value = crachaSemA;
+
+                        if (fallbackData.tipo === 'ADMIN') {
+                            mostrarAdmin();
+                        } else {
+                            startTimer();
+                            mostrarOperador();
+                        }
+                        return;
+                    }
+
+                    const fallbackTexto = await fallbackResponse.text();
+                    alert(fallbackTexto || texto || 'CRACHÁ NÃO ENCONTRADO OU SENHA INVÁLIDA.');
+                    return;
+                }
+            }
+
+            alert(texto || 'CRACHÁ NÃO ENCONTRADO OU SENHA INVÁLIDA.');
+        }
+    } catch (error) {
+        console.error('Erro na requisição:', error);
+        alert('Erro de conexão. O servidor está rodando na porta 5045?');
+    }
+}
+
+async function esqueciSenha() {
+    const barcode = document.getElementById('barcode')?.value.toUpperCase() || '';
+    if (!barcode.endsWith('A')) {
+        alert('Disponível apenas para administradores.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/senha/recuperar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ Barcode: barcode })
+        });
+
+        const texto = await response.text();
+        let data = {};
+        try { data = JSON.parse(texto); } catch {}
+
+        if (response.ok && !data.semEmail) {
+            alert(`✅ ${data.mensagem}`);
+            mostrarTelaCodigoReset(barcode);
+        } else {
+            const mensagemErro = data?.mensagem || data?.detail || data?.title || texto;
+            alert('❌ ' + mensagemErro);
+        }
+    } catch (error) {
+        alert('❌ Erro de conexão com o servidor.');
+    }
+}
+    async function carregarAtivos() {
+    try {
+        const response = await fetch(`${API_URL}/ferramentas`);
+        if (response.ok) {
+            const data = await response.json();
+            
+            ativos = data.map(item => {
+                // Remove underlines e garante que tudo fique em maiúsculo para comparar
+                const statusFormatado = item.status.replace('_', ' ').toUpperCase();
+                
+                // Define a cor baseada no status que vem do Banco
+                let corCard = 'red'; 
+                if (statusFormatado === 'DISPONIVEL') corCard = '#28a745'; // Verde
+                if (statusFormatado === 'EM USO') corCard = 'orange';      // Laranja
+
+                return {
+                    id: item.id,
+                    nome: item.descricao,
+                    status: statusFormatado,
+                    cor: corCard,
+                    setor: 'GERAL'
+                };
+            });
+            // Força a atualização da tela
+            if (currentUser === "ADMIN") mostrarAdmin(); 
+        }
+    } catch (e) { console.error("Erro ao carregar ativos", e); }
+}
+
+  
+
+function mostrarTelaCodigoReset(barcode) {
+    document.getElementById('app').innerHTML = `
+        <div class="container-center">
+            <div class="main-card">
+                <h2>RECUPERAR <span style="color:red">SENHA</span></h2>
+                <p style="color:#888; font-size:14px; margin-bottom:20px;">
+                    Digite o código de 6 dígitos enviado para seu email.
+                </p>
+
+                <input type="text" id="codigoReset" class="input-scan"
+                       placeholder="CÓDIGO DE 6 DÍGITOS"
+                       maxlength="6"
+                       style="font-size:1.4rem; letter-spacing:8px; text-align:center; margin-bottom:10px;">
+
+                <input type="password" id="novaSenha" class="input-scan"
+                       placeholder="NOVA SENHA"
+                       style="font-size:1rem; margin-bottom:10px; margin-top:15px;">
+
+                <input type="password" id="confirmarSenha" class="input-scan"
+                       placeholder="CONFIRMAR NOVA SENHA"
+                       style="font-size:1rem; margin-bottom:10px;">
+
+                <p id="feedbackReset" style="font-weight:bold; min-height:20px; color:red;"></p>
+
+                <button onclick="salvarNovaSenha()"
+                        class="btn-logout"
+                        style="width:100%; background:red; color:white; margin-top:10px;">
+                    SALVAR NOVA SENHA
+                </button>
+                <button onclick="mostrarLogin()" class="btn-cadastro" style="margin-top:10px;">
+                    VOLTAR
+                </button>
+            </div>
+        </div>`;
+}
+
+
+async function salvarNovaSenha() {
+    const codigoEl   = document.getElementById('codigoReset');
+    const novaEl     = document.getElementById('novaSenha');
+    const confirmarEl = document.getElementById('confirmarSenha');
+    const feedback   = document.getElementById('feedbackReset');
+
+    // LOG para debug
+    console.log('Código elemento:', codigoEl);
+    console.log('Código valor:', codigoEl?.value);
+
+    const codigo    = codigoEl?.value?.trim() || '';
+    const nova      = novaEl?.value || '';
+    const confirmar = confirmarEl?.value || '';
+
+    if (!codigo || codigo.length !== 6) {
+        feedback.style.color = 'red';
+        feedback.innerText = `Digite o código de 6 dígitos. (lido: "${codigo}")`;
+        return;
+    }
+
+    if (!nova || nova.length < 6) {
+        feedback.style.color = 'red';
+        feedback.innerText = 'A senha deve ter pelo menos 6 caracteres.';
+        return;
+    }
+
+    if (nova !== confirmar) {
+        feedback.style.color = 'red';
+        feedback.innerText = 'As senhas não coincidem.';
+        return;
+    }
+
+    console.log('Enviando:', { Token: codigo, NovaSenha: nova });
+
+    try {
+        const res = await fetch(`${API_URL}/senha/redefinir`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ Token: codigo, NovaSenha: nova })
+        });
+
+        const texto = await res.text();
+        let mensagem = texto;
+        try { mensagem = JSON.parse(texto).mensagem || texto; } catch {}
+
+        if (res.ok) {
+            feedback.style.color = '#28a745';
+            feedback.innerText = '✅ ' + mensagem;
+            setTimeout(() => mostrarLogin(), 2000);
+        } else {
+            feedback.style.color = 'red';
+            feedback.innerText = '❌ ' + mensagem;
+        }
+    } catch (err) {
+        feedback.style.color = 'red';
+        feedback.innerText = '❌ Erro de conexão com o servidor.';
+    }
+}
+
+async function realizarMovimentacao(tipo, ferramentaId) {
+    const rota = tipo === 'RETIRAR' ? 'retirar' : 'devolver';
+    const feedback = document.getElementById('feedback');
+    
+    const rawValue = ferramentaId.toString().trim();
+    const apenasNumeros = rawValue.replace(/\D/g, '');
+    const idNumerico = apenasNumeros && /^\d+$/.test(rawValue) ? parseInt(rawValue, 10) : NaN;
+    const codigoUpper = rawValue.toUpperCase();
+
+    const payload = {
+        UsuarioId: currentUserId,
+        FerramentaCodigoBarras: rawValue,
+    };
+
+    if (!Number.isNaN(idNumerico)) {
+        payload.FerramentaId = idNumerico;
+    }
+
+    // Validação local antes de enviar para a API
+    if (tipo === 'RETIRAR') {
+        try {
+            const resFerramentas = await fetch(`${API_URL}/ferramentas`);
+            if (resFerramentas.ok) {
+                const todasFerramentas = await resFerramentas.json();
+                const correspondentes = todasFerramentas.filter(f => {
+                    const idStr = String(f.Id || f.id || '');
+                    const codigo = String(f.CodigoBarras || f.codigoBarras || '').trim().toUpperCase();
+                    return idStr === rawValue || codigo === codigoUpper;
+                });
+
+                if (correspondentes.length > 1) {
+                    alert('❌ Existem uma ferramenta com este código/ID. Remova a duplicata ou informe o administrador.');
+                    return;
+                }
+
+                if (correspondentes.length === 1) {
+                    const ferramenta = correspondentes[0];
+                    const setor = String(ferramenta.Setor || ferramenta.setor || '').trim().toUpperCase();
+                    if (setor === 'ALMOXERIFADO') {
+                        alert('❌ Não é possível pegar, pois a ferramenta está no almoxerifado.');
+                        return;
+                    }
+
+                    const status = String(ferramenta.Status || ferramenta.status || '').trim().toUpperCase();
+                    if (status === 'EM_USO') {
+                        alert('❌ Não é possível pegar, pois a ferramenta já está em uso.');
+                        return;
+                    }
+                    if (status === 'MANUTENCAO') {
+                        alert('❌ Não é possível pegar, pois a ferramenta está em manutenção.');
+                        return;
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('Não foi possível validar localmente a ferramenta antes da movimentação:', err);
+        }
+    }
+
+    // LOG PARA DEBUG: Abra o F12 no navegador para ver isso
+    console.log("Enviando:", payload);
+
+    try {
+        const response = await fetch(`${API_URL}/movimentacao/${rota}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        let textoResposta = await response.text();
+
+        try {
+            const json = JSON.parse(textoResposta);
+            if (json.erro) textoResposta = json.erro;
+            else if (json.mensagem) textoResposta = json.mensagem;
+        } catch (err) {
+            // não é JSON, usar o texto original
+        }
+
+        if (response.ok) {
+            feedback.innerText = "✅ SUCESSO: " + textoResposta;
+            feedback.style.color = "var(--green)";
+        } else {
+            feedback.innerText = "❌ ERRO: " + textoResposta;
+            feedback.style.color = "red";
+        }
+    } catch (e) {
+        feedback.innerText = "❌ ERRO DE CONEXÃO";
+        feedback.style.color = "red";
+    }
+}
+
+
+async function carregarAtivos() {
+    try {
+        const res = await fetch(`${API_URL}/ferramentas`);
+        const dados = await res.json();
+        
+        // ESSA LINHA É FUNDAMENTAL:
+        ativosBackup = dados; 
+        
+        renderizarTabelaAdmin(dados);
+    } catch (e) {
+        console.error("Erro ao buscar ferramentas", e);
+    }
+}
+
+function getSetorLabel(f) {
+    const setor = (f.setor || f.Setor || "GERAL").toString().trim().toUpperCase();
+    return setor === "GERAL" ? "ALMOXERIFADO" : setor;
+}
+
+function renderizarTabelaOficina(lista) {
+    const corpo = document.getElementById('tabelaOficinaCorpo');
+    if (!corpo) return;
+    corpo.innerHTML = "";
+
+    lista.forEach(f => {
+        // Pega o Código de Barras (tenta todas as variações vindo do C#)
+        const codigoBarras = f.codigoBarras || f.CodigoBarras || f.usuarioId || f.id;
+        
+        // Pega a Descrição (o nome real é 'descricao', os '...' eram apenas visual do console)
+        const nomeDescricao = f.descricao || f.Descricao || "Sem Descrição";
+        const setorLabel = getSetorLabel(f);
+
+        corpo.innerHTML += `
+            <tr style="border-bottom: 1px solid #222;">
+                <td style="padding: 15px; font-weight: bold; color: #e60000; font-family: monospace; font-size: 18px;">
+                    ${codigoBarras}
+                </td>
+                <td style="color: #ddd;">${nomeDescricao}</td>
+                <td>
+                    <span style="background: #222; color: #aaa; padding: 4px 10px; border-radius: 4px; font-size: 11px;">
+                        ${setorLabel}
+                    </span>
+                </td>
+                <td>
+                    <span style="color: ${(f.status || f.Status) === 'EM_USO' ? '#ffaa00' : '#00ff00'}">
+                        ● ${f.status || f.Status}
+                    </span>
+                </td>
+                <td style="text-align: center;">
+                    <button onclick="abrirModalEdicao('${f.id || f.Id}')" style="background: none; border: 1px solid #333; color: #666; padding: 8px; border-radius: 6px; cursor: pointer;">
+                        ✏️ Editar
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+}
+// Filtro em tempo real para a oficina
+function filtrarOficina(termo) {
+    const busca = termo.toUpperCase();
+    const filtrados = ativosBackup.filter(f => 
+        (f.descricao || f.Descricao).toUpperCase().includes(busca) || 
+        (f.id || f.Id).toString().includes(busca)
+    );
+    renderizarTabelaOficina(filtrados);
+}
+    // Exemplo de como chamar o Logout no seu index.html
+// Função de Logout atualizada para enviar o motivo
+async function fazerLogout() {
+    if (!usuarioLogado) return location.reload();
+
+    // Avisa o servidor que estamos saindo
+    await fetch(`${API_URL}/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            usuarioId: usuarioLogado.barcode, // Certifique-se que o campo é barcode ou usuarioId
+            motivo: 'MANUAL' 
+        })
+    });
+
+    // Limpa os dados locais e volta para a tela de login
+    usuarioLogado = null;
+    location.reload(); 
+}
+// Verifique se esta função está EXATAMENTE assim (com as crases ` `)
+function mostrarTelaCadastro() {
+    document.getElementById('app').innerHTML = `
+        <div class="container-center">
+            <div class="main-card" style="display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 500px;">
+                <h2 style="text-align: center; width: 100%;">NOVO <span style="color:red">CADASTRO</span></h2>
+                <input type="text" id="cadNome" class="input-scan" placeholder="NOME" style="font-size:1rem; margin-bottom:10px; width: 100%; box-sizing: border-box;">
+                <input type="text" id="cadCracha" class="input-scan" placeholder="CRACHÁ" style="font-size:1rem; margin-bottom:10px; width: 100%; box-sizing: border-box;" oninput="atualizarCamposAdminCadastro()">
+                <div id="adminFields" style="display:none; width: 100%;">
+                    <input type="email" id="cadEmail" class="input-scan" placeholder="EMAIL (apenas ADMIN)" style="margin-top:10px; font-size:1rem; width: 100%; box-sizing: border-box;">
+                    <div style="position:relative; width:100%; margin-top:10px;">
+                        <input type="password" id="cadSenha" class="input-scan" placeholder="SENHA (APENAS ADMIN)" style="font-size:1rem; width: 100%; box-sizing: border-box; padding-right:40px;">
+                        <button id="toggleCadSenha" type="button" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:#fff; font-size:1.2rem; cursor:pointer;">👁️</button>
+                    </div>
+                    <small style="color:#777; display:block; margin-top:8px; text-align: center;">Digite o código terminado em A para criar um ADMIN; caso contrário, o usuário será OPERADOR.</small>
+                </div>
+                <button onclick="cadastrarNoBanco()" class="btn-logout" style="width:100%; margin-top:20px; background:red; color:white">SALVAR</button>
+                <button onclick="mostrarLogin()" class="btn-cadastro" style="width:100%;">VOLTAR</button>
+            </div>
+        </div>`;
+    atualizarCamposAdminCadastro();
+
+    // Olhinho para mostrar/esconder senha no cadastro
+    const toggleCadSenha = document.getElementById('toggleCadSenha');
+    const cadSenhaInput = document.getElementById('cadSenha');
+    if (toggleCadSenha && cadSenhaInput) {
+        toggleCadSenha.addEventListener('click', () => {
+            const isHidden = cadSenhaInput.type === 'password';
+            cadSenhaInput.type = isHidden ? 'text' : 'password';
+            toggleCadSenha.textContent = isHidden ? '🙈' : '👁️';
+            cadSenhaInput.focus();
+        });
+    }
+
+    // Detecção de scanner no campo crachá do cadastro
+    const cadCrachaInput = document.getElementById('cadCracha');
+    if (cadCrachaInput) {
+        let _keyTimesCad = [];
+        cadCrachaInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') {
+                _keyTimesCad.push(Date.now());
+            } else {
+                // Remove char extra do scanner antes de processar
+                if (_keyTimesCad.length > 0 && (Date.now() - _keyTimesCad[_keyTimesCad.length - 1]) < 100) {
+                    if (cadCrachaInput.value.length > 1)
+                        cadCrachaInput.value = cadCrachaInput.value.slice(0, -1);
+                }
+                _keyTimesCad = [];
+                atualizarCamposAdminCadastro();
+            }
+        });
+    }
+}
+
+function renderizarTabelaAdmin(lista) {
+    const corpo = document.getElementById('listaAtivosAdmin');
+    if (!corpo) return;
+
+    if (!lista || lista.length === 0) {
+        corpo.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#555;">Nenhum ativo encontrado.</td></tr>`;
+        return;
+    }
+
+    corpo.innerHTML = lista.map(f => {
+        // Mapeamento exato das propriedades que vem do seu C#
+        const idOriginal = f.id || f.Id || 0;
+        const descricao = f.descricao || f.Descricao || "SEM DESCRIÇÃO";
+        const statusVal = (f.status || f.Status || "DISPONIVEL").toUpperCase();
+        const vidaUtil = f.vidaUtil !== undefined ? f.vidaUtil : (f.VidaUtil || 0);
+        
+        // Aqui está o segredo: Pegar o Colaborador que enviamos no Join do C#
+        const colabNome = f.colaborador || f.Colaborador || "---";
+
+        const codigoBarras = `TSEA-${String(idOriginal).padStart(3, '0')}`;
+
+        const codigoBarrasReal = f.codigoBarras || f.CodigoBarras || f.Codigo || f.codigo || `TSEA-${String(idOriginal).padStart(3, '0')}`;
+        return `
+            <tr style="border-bottom: 1px solid #1a1a1a;">
+                <td style="padding: 15px; color: ${colabNome === '---' ? '#555' : '#fff'}; font-weight: bold;">
+                    ${colabNome.toUpperCase()}
+                </td>
+                <td>
+                    <b style="color: #fff;">${descricao.toUpperCase()}</b><br>
+                    <small style="color: red; font-weight: bold;">${codigoBarrasReal}</small>
+                </td>
+                <td style="width: 150px;">
+                    <div class="progress-bar" style="background: #222; height: 8px; border-radius: 4px; overflow: hidden; position: relative;">
+                        <div style="background: ${vidaUtil < 30 ? 'red' : '#00ff00'}; width: ${vidaUtil}%; height: 100%;"></div>
+                    </div>
+                    <small style="color: #555;">${vidaUtil}% restante</small>
+                </td>
+                <td>
+                    <span class="status-badge ${statusVal.toLowerCase().replace(' ', '_')}">
+                        ${statusVal}
+                    </span>
+                </td>
+            </tr>`;
+    }).join('');
+}
+async function carregarDadosDashboard() {
+    try {
+        const response = await fetch(`${API_URL}/ferramentas`);
+        if (response.ok) {
+            return await response.json();
+        }
+        return [];
+    } catch (e) {
+        console.error("Erro ao buscar dados para o dashboard", e);
+        return [];
+    }
+}
+
+async function mostrarAdmin(filtroSetor = 'GERAL') {
+    const res = await fetch(`${API_URL}/ferramentas`);
+    const dadosResposta = res.ok ? await res.json() : await res.text();
+    const dados = Array.isArray(dadosResposta) ? dadosResposta : [];
+    if (!res.ok) console.error('Erro na API /ferramentas:', dadosResposta);
+    ativosBackup = dados; 
+
+    // Exclui apenas ferramentas do almoxerifado da visualização do dashboard
+    const dadosDashboard = dados.filter(f => {
+        const setorDB = (f.setor || f.Setor || "").toString().trim().toUpperCase();
+        return setorDB !== 'ALMOXERIFADO';
+    });
+
+    let listaFiltrada = dadosDashboard;
+
+    if (filtroSetor === 'GERAL') {
+        listaFiltrada = dadosDashboard.filter(f => {
+            const statusDB = (f.status || f.Status || "").toString().trim().toUpperCase();
+            return statusDB === 'EM_USO' || statusDB === 'ATRASADO';
+        });
+    } else if (filtroSetor === 'ATRASADO') {
+        listaFiltrada = dadosDashboard.filter(f => {
+            const statusDB = (f.status || f.Status || "").toString().trim().toUpperCase();
+            return statusDB === 'ATRASADO';
+        });
+    } else {
+        listaFiltrada = dadosDashboard.filter(f => {
+            const setorDB = (f.setor || f.Setor || "").toString().trim().toUpperCase();
+            return setorDB === filtroSetor.toUpperCase();
+        });
+    }
+
+    ativosDashboardBackup = listaFiltrada;
+    const temAtraso = dadosDashboard.some(f => (f.status || f.Status || "").toUpperCase() === 'ATRASADO');
+
+    // HTML CORRIGIDO (FECHANDO AS DIVS NO LUGAR CERTO)
+    document.getElementById('app').innerHTML = `
+        <div style="display: flex; min-height: 100vh; background: #080808;">
+            
+            <div style="width: 260px; background: #000; border-right: 1px solid #222; padding: 20px; display: flex; flex-direction: column; justify-content: space-between; position: sticky; top: 0; height: 100vh;">
+                <div>
+                    <h2 style="color: white; margin-bottom: 30px;">TSEA <span style="color: red;">ENERGIA</span></h2>
+                    <nav>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXERIFADO</div>
+                    </nav>
+                    <div style="border-top: 1px solid #333; margin-top: 20px; padding-top: 15px;">
+                        <button onclick="limparColaboradoresInvalidos()" style="width: 100%; background: #333; color: #aaa; border: 1px solid #555; padding: 10px; cursor: pointer; border-radius: 5px; font-size: 12px; margin-bottom: 10px;">
+                            🧹 Limpar Colaboradores
+                        </button>
+                    </div>
+                </div>
+
+                <div style="border-top: 1px solid #222; padding-top: 20px;">
+                    <div style="color: #aaa; font-size: 14px; margin-bottom: 10px;">
+                        👤 ${usuarioLogado ? usuarioLogado.nome : "Administrador"} 
+                    </div>
+                    <button onclick="fazerLogout()" style="width: 100%; background: #c00; color: white; border: none; padding: 12px; cursor: pointer; border-radius: 5px; font-weight: bold;">
+                        SAIR DA CONTA
+                    </button>
+                </div>
+            </div> <div style="flex: 1; padding: 30px; overflow-y: auto;">
+                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:30px;">
+                    <input type="text" id="inputBusca" placeholder="Bipe o Código de Barras..." 
+                           class="search-input" style="width: 450px; background:#111; border:1px solid #333; color:white; padding:12px; border-radius:8px;">
+                    
+                    <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtraso()" title="Notificações">
+                        🔔 ${temAtraso ? '<span class="alert-dot"></span>' : ''}
+                    </button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px;">
+                    <div class="setor-card ${filtroSetor === 'GERAL' ? 'active' : ''}" 
+                         style="background:#151515; padding:30px; border-radius:10px; text-align:center; color:white; cursor:pointer; font-weight:bold; border: 1px solid ${filtroSetor === 'GERAL' ? 'red' : '#222'}" 
+                         onclick="mostrarAdmin('GERAL')">GERAL</div>
+                    
+                    <div class="setor-card ${filtroSetor === 'SOLDAGEM' ? 'active' : ''}" 
+                         style="background:#151515; padding:30px; border-radius:10px; text-align:center; color:white; cursor:pointer; font-weight:bold; border: 1px solid ${filtroSetor === 'SOLDAGEM' ? 'red' : '#222'}" 
+                         onclick="mostrarAdmin('SOLDAGEM')">SOLDAGEM</div>
+                    
+                    <div class="setor-card ${filtroSetor === 'MONTAGEM' ? 'active' : ''}" 
+                         style="background:#151515; padding:30px; border-radius:10px; text-align:center; color:white; cursor:pointer; font-weight:bold; border: 1px solid ${filtroSetor === 'MONTAGEM' ? 'red' : '#222'}" 
+                         onclick="mostrarAdmin('MONTAGEM')">MONTAGEM</div>
+                    
+                    <div class="setor-card ${filtroSetor === 'USINAGEM' ? 'active' : ''}" 
+                         style="background:#151515; padding:30px; border-radius:10px; text-align:center; color:white; cursor:pointer; font-weight:bold; border: 1px solid ${filtroSetor === 'USINAGEM' ? 'red' : '#222'}" 
+                         onclick="mostrarAdmin('USINAGEM')">USINAGEM</div>
+                </div>
+
+                <div style="background:#111; border-radius:10px; padding:10px; border:1px solid #222;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="color: #666; font-size: 13px; text-align: left; border-bottom: 1px solid #222;">
+                                <th style="padding: 15px;">COLABORADOR ATIVO</th>
+                                <th>ATIVO (DESCRIÇÃO)</th>
+                                <th>VIDA ÚTIL</th>
+                                <th>STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listaAtivosAdmin"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    renderizarTabelaAdmin(listaFiltrada);
+    agendarNotificacaoDeAtraso(dados);
+
+    // Scanner no campo de busca do dashboard
+    const inputBuscaEl = document.getElementById('inputBusca');
+    if (inputBuscaEl) {
+        scannerSafeInput(inputBuscaEl, (val) => filtrarBusca(val));
+        inputBuscaEl.addEventListener('keyup', (e) => {
+            if (e.key !== 'Enter') filtrarBusca(inputBuscaEl.value);
+        });
+    }
+}
+async function mostrarOficina() {
+    const res = await fetch(`${API_URL}/ferramentas`);
+    const ferramentasResposta = res.ok ? await res.json() : await res.text();
+    const ferramentas = Array.isArray(ferramentasResposta) ? ferramentasResposta : [];
+    if (!res.ok) console.error('Erro na API /ferramentas:', ferramentasResposta);
+    ativosBackup = ferramentas; // Sincroniza o backup para o filtro funcionar
+
+    document.getElementById('app').innerHTML = `
+        <div style="display: flex; min-height: 100vh; background: #080808;">
+            
+            <div style="width: 260px; background: #000; border-right: 1px solid #222; padding: 20px; display: flex; flex-direction: column; justify-content: space-between; position: sticky; top: 0; height: 100vh;">
+                <div>
+                    <h2 style="color: white; margin-bottom: 30px;">TSEA <span style="color: red;">ENERGIA</span></h2>
+                    <nav>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXERIFADO</div>
+                    </nav>
+                </div>
+                <div style="border-top: 1px solid #222; padding-top: 20px;">
+                    <div style="color: #aaa; font-size: 14px; margin-bottom: 10px;">👤 ${usuarioLogado ? usuarioLogado.nome : "Administrador"}</div>
+                    <button onclick="fazerLogout()" style="width: 100%; background: #222; color: white; border: 1px solid #444; padding: 10px; cursor: pointer; border-radius: 5px;">SAIR</button>
+                </div>
+            </div>
+
+            <div style="flex: 1; padding: 30px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                    <h1 style="color: white; margin: 0;">🛠️ Gestão de Oficina</h1>
+                    <button onclick="abrirModalNovaFerramenta()" style="background: #e60000; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">
+                     ➕ Nova Ferramenta
+                   </button>
+                </div>
+
+                <div style="background: #111; padding: 15px; border-radius: 12px; border: 1px solid #e60000; margin-bottom: 20px; display: flex; align-items: center; gap: 15px;">
+                    <span style="font-size: 20px;">🏷️</span>
+                    <input type="text" id="buscaCodigoBarras" name="buscaCodigoBarras"
+                           placeholder="Bipe o Código de Barras aqui..." 
+                           style="flex: 1; background: transparent; border: none; color: white; font-size: 18px; outline: none; font-family: monospace;"
+                           autofocus>
+                </div>
+
+                <div style="background: #111; border-radius: 12px; border: 1px solid #222; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse; color: white;">
+                        <thead>
+                            <tr style="background: #1a1a1a; color: #666; text-align: left; font-size: 12px;">
+                             <th style="padding: 15px;">CÓDIGO DE BARRAS</th> <th>DESCRIÇÃO</th>
+                             <th>SETOR</th>
+                             <th>STATUS</th>
+                             <th style="text-align: center;">AÇÕES</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaOficinaCorpo"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+
+    renderizarTabelaOficina(ferramentas);
+
+    // Scanner no campo de busca da oficina
+    const buscaOfEl = document.getElementById('buscaCodigoBarras');
+    if (buscaOfEl) {
+        scannerSafeInput(buscaOfEl, (val) => filtrarPorCodigo(val));
+        buscaOfEl.addEventListener('keyup', (e) => {
+            if (e.key !== 'Enter') filtrarPorCodigo(buscaOfEl.value);
+        });
+    }
+}
+function abrirModalNovaFerramenta() {
+    const modalHtml = `
+        <div id="modalCadastro" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+            <div style="background: #111; padding: 30px; border-radius: 12px; border: 1px solid #333; width: 400px; color: white;">
+                <h2 style="margin-top: 0; color: #e60000;">➕ Cadastrar Ativo</h2>
+                
+                <div style="margin-top: 20px;">
+                    <label style="display:block; margin-bottom: 5px; color: #aaa;">Código de Barras</label>
+                    <input type="text" id="novoCodigo" style="width: 100%; padding: 12px; margin-bottom: 20px; background: #000; border: 1px solid #444; color: white; border-radius: 5px;" placeholder="Bipe o código..." autofocus>
+
+                    <label style="display:block; margin-bottom: 5px; color: #aaa;">Descrição</label>
+                    <input type="text" id="novaDescricao" style="width: 100%; padding: 12px; margin-bottom: 20px; background: #000; border: 1px solid #444; color: white; border-radius: 5px;" placeholder="Ex: Furadeira Bosch">
+
+                    <label style="display:block; margin-bottom: 5px; color: #aaa;">Setor</label>
+                    <select id="novoSetor" style="width: 100%; padding: 12px; margin-bottom: 30px; background: #000; border: 1px solid #444; color: white; border-radius: 5px;">
+                        <option value="MONTAGEM">MONTAGEM</option>
+                        <option value="SOLDAGEM">SOLDAGEM</option>
+                        <option value="USINAGEM">USINAGEM</option>
+                        <option value="ALMOXERIFADO">ALMOXERIFADO</option>
+                    </select>
+
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="salvarFerramenta()" style="flex: 2; background: #e60000; color: white; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">SALVAR</button>
+                        <button onclick="document.getElementById('modalCadastro').remove()" style="flex: 1; background: #333; color: white; border: none; padding: 15px; border-radius: 5px; cursor: pointer;">CANCELAR</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    // Foca no campo de código de barras automaticamente
+    const novoCodigoInput = document.getElementById('novoCodigo');
+    setTimeout(() => novoCodigoInput.focus(), 100);
+
+    let _keyTimesNovo = [];
+    novoCodigoInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') _keyTimesNovo.push(Date.now());
+    });
+    novoCodigoInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        if (_keyTimesNovo.length > 0 && (Date.now() - _keyTimesNovo[_keyTimesNovo.length - 1]) < 100) {
+            if (novoCodigoInput.value.length > 1)
+                novoCodigoInput.value = novoCodigoInput.value.slice(0, -1);
+        }
+        _keyTimesNovo = [];
+    });
+}
+
+async function salvarFerramenta() {
+    const cod = document.getElementById('novoCodigo').value.trim();
+    const desc = document.getElementById('novaDescricao').value.trim();
+    const setor = document.getElementById('novoSetor').value;
+
+    if (!cod || !desc) {
+        alert("⚠️ Preencha todos os campos!");
+        return;
+    }
+
+    const novaF = {
+        CodigoBarras: cod,
+        Descricao: desc,
+        Setor: setor,
+        Status: 'DISPONIVEL',
+        VidaUtil: 100
+    };
+
+    try {
+        const res = await fetch(`${API_URL}/ferramentas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(novaF)
+        });
+
+        if (res.ok) {
+            alert("✅ Cadastrada com sucesso!");
+            document.getElementById('modalCadastro').remove();
+            mostrarOficina();
+        } else {
+            const erro = await res.json();
+            alert("❌ Erro: " + (erro.erro || "Falha ao salvar"));
+        }
+    } catch (err) {
+        alert("❌ Erro de conexão com o servidor.");
+    }
+}
+
+function abrirModalEdicao(id) {
+    const ferramenta = ativosBackup.find(f => String(f.id || f.Id) === String(id));
+    if (!ferramenta) {
+        alert('Ferramenta não encontrada.');
+        return;
+    }
+
+    const codigoBarras = ferramenta.codigoBarras || ferramenta.CodigoBarras || '';
+    const descricao = ferramenta.descricao || ferramenta.Descricao || '';
+    const setor = ferramenta.setor || ferramenta.Setor || 'GERAL';
+    const status = ferramenta.status || ferramenta.Status || 'DISPONIVEL';
+
+    if (status === 'EM_USO') {
+        alert('Não é possível editar esta ferramenta porque ela está em uso.');
+        return;
+    }
+
+    const modalHtml = `
+        <div id="modalCadastro" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+            <div style="background: #111; padding: 30px; border-radius: 12px; border: 1px solid #333; width: 420px; color: white;">
+                <h2 style="margin-top: 0; color: #e60000;">✏️ Editar Ferramenta</h2>
+
+                <label style="display:block; margin-bottom: 5px; color: #aaa;">Código de Barras</label>
+                <input type="text" id="editCodigo" value="${codigoBarras}" style="width: 100%; padding: 12px; margin-bottom: 18px; background: #000; border: 1px solid #444; color: white; border-radius: 5px;" readonly>
+
+                <label style="display:block; margin-bottom: 5px; color: #aaa;">Descrição</label>
+                <input type="text" id="editDescricao" value="${descricao}" style="width: 100%; padding: 12px; margin-bottom: 18px; background: #000; border: 1px solid #444; color: white; border-radius: 5px;">
+
+                <label style="display:block; margin-bottom: 5px; color: #aaa;">Setor</label>
+                <select id="editSetor" style="width: 100%; padding: 12px; margin-bottom: 18px; background: #000; border: 1px solid #444; color: white; border-radius: 5px;">
+                    <option value="MONTAGEM" ${setor === 'MONTAGEM' ? 'selected' : ''}>MONTAGEM</option>
+                    <option value="SOLDAGEM" ${setor === 'SOLDAGEM' ? 'selected' : ''}>SOLDAGEM</option>
+                    <option value="USINAGEM" ${setor === 'USINAGEM' ? 'selected' : ''}>USINAGEM</option>
+                    <option value="ALMOXERIFADO" ${setor === 'ALMOXERIFADO' ? 'selected' : ''}>ALMOXERIFADO</option>
+                </select>
+
+                <label style="display:block; margin-bottom: 5px; color: #aaa;">Status Atual</label>
+                <div style="margin-bottom: 20px; color: white; padding: 12px; background: #000; border: 1px solid #444; border-radius: 5px;">${status}</div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                    <button onclick="atualizarFerramenta('${id}')" style="background: #e60000; color: white; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">SALVAR</button>
+                    <button onclick="colocarEmManutencao('${id}')" style="background: #ff9900; color: black; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">MANUTENÇÃO</button>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="excluirFerramenta('${id}')" style="flex: 1; background: #333; color: white; border: none; padding: 15px; border-radius: 5px; cursor: pointer;">EXCLUIR</button>
+                    <button onclick="document.getElementById('modalCadastro').remove()" style="flex: 1; background: #555; color: white; border: none; padding: 15px; border-radius: 5px; cursor: pointer;">CANCELAR</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+async function atualizarFerramenta(id) {
+    const desc = document.getElementById('editDescricao').value.trim();
+    const setor = document.getElementById('editSetor').value;
+
+    if (!desc) {
+        alert('Preencha a descrição antes de salvar.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/ferramentas/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ Descricao: desc, Setor: setor })
+        });
+
+        if (res.ok) {
+            alert('✅ Alterações salvas com sucesso!');
+            document.getElementById('modalCadastro').remove();
+            mostrarOficina();
+        } else {
+            const erro = await res.text();
+            alert('❌ Erro ao atualizar: ' + erro);
+        }
+    } catch (err) {
+        alert('❌ Erro de conexão com o servidor.');
+    }
+}
+
+async function excluirFerramenta(id) {
+    if (!confirm('Tem certeza que deseja excluir esta ferramenta?')) return;
+
+    try {
+        const res = await fetch(`${API_URL}/ferramentas/${id}`, {
+            method: 'DELETE'
+        });
+
+        if (res.ok) {
+            alert('🗑️ Ferramenta excluída com sucesso!');
+            document.getElementById('modalCadastro').remove();
+            mostrarOficina();
+        } else {
+            const erro = await res.text();
+            alert('❌ Erro ao excluir: ' + erro);
+        }
+    } catch (err) {
+        alert('❌ Erro de conexão com o servidor.');
+    }
+}
+
+async function colocarEmManutencao(id) {
+    if (!confirm('Deseja marcar esta ferramenta como EM MANUTENÇÃO?')) return;
+
+    try {
+        const res = await fetch(`${API_URL}/ferramentas/${id}/manutencao`, {
+            method: 'POST'
+        });
+
+        if (res.ok) {
+            alert('🔧 Ferramenta marcada como manutenção.');
+            document.getElementById('modalCadastro').remove();
+            mostrarOficina();
+        } else {
+            const erro = await res.text();
+            alert('❌ Erro ao atualizar para manutenção: ' + erro);
+        }
+    } catch (err) {
+        alert('❌ Erro de conexão com o servidor.');
+    }
+}
+
+// Função para buscar uma ferramenta específica pelo código
+async function buscarNaOficina(id) {
+    if (!id) return;
+    
+    const res = await fetch(`${API_URL}/ferramentas`);
+    const dados = await res.json();
+    
+    // Procura a ferramenta exata
+    const ferramenta = dados.find(f => (f.id || f.Id).toString() === id.trim());
+
+    const areaResultado = document.getElementById('resultadoOficina');
+    
+    if (ferramenta) {
+        areaResultado.innerHTML = `
+            <div style="background: #151515; border: 1px solid #333; padding: 30px; border-radius: 15px; text-align: left; color: white; max-width: 500px; margin: 0 auto;">
+                <h3 style="color: red; margin-top: 0;">${ferramenta.descricao || ferramenta.Descricao}</h3>
+                <p><strong>ID:</strong> ${ferramenta.id || ferramenta.Id}</p>
+                <p><strong>Setor:</strong> ${getSetorLabel(ferramenta)}</p>
+                <p><strong>Status:</strong> ${ferramenta.status || ferramenta.Status}</p>
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button style="background: #333; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;">✏️ Editar</button>
+                    <button style="background: #500; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;">🔧 Enviar p/ Manutenção</button>
+                </div>
+            </div>
+        `;
+    } else {
+        areaResultado.innerHTML = `<p style="color: #ff4444;">❌ Ferramenta "${id}" não encontrada no sistema.</p>`;
+    }
+}
+
+async function cadastrarFerramenta() {
+    const nome = document.getElementById('inputCadastro').value;
+    
+    if (!nome) {
+        alert("Por favor, digite o nome da ferramenta.");
+        return;
+    }
+
+    const novaFerramenta = {
+        Descricao: nome,
+        Status: "DISPONIVEL",
+        Setor: "OFICINA", // Define um setor padrão
+        VidaUtil: 100
+    };
+
+    try {
+        const response = await fetch(`${API_URL}/ferramentas/cadastrar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(novaFerramenta)
+        });
+
+        if (response.ok) {
+            alert("✅ Ferramenta cadastrada com sucesso!");
+            document.getElementById('inputCadastro').value = ""; // Limpa o campo
+            mostrarOficina(); // RECARREGA OS CARDS NA TELA
+        } else {
+            alert("❌ Erro ao cadastrar no banco.");
+        }
+    } catch (error) {
+        console.error("Erro:", error);
+        alert("Servidor offline ou erro na rede.");
+    }
+}
+// Função para filtrar na tela sem recarregar
+function filtrarAdmin(setor) {
+    const filtrados = setor === 'TODOS' ? ativos : ativos.filter(a => a.setor === setor);
+    document.getElementById('corpoTabela').innerHTML = renderizarLinhas(filtrados);
+}
+
+// Função auxiliar para gerar as linhas da tabela
+function renderizarLinhas(lista) {
+    return lista.map(i => `
+        <tr>
+            <td style="color:red; font-weight:bold">${i.id}</td>
+            <td>${i.nome}</td>
+            <td style="color:${i.cor}">${i.status}</td>
+        </tr>
+    `).join('');
+}
+
+
+// Função auxiliar para gerar as linhas da tabela
+function renderizarLinhas(lista) {
+    return lista.map(i => `
+        <tr>
+            <td style="color:red; font-weight:bold">${i.id}</td>
+            <td>${i.nome}</td>
+            <td style="color:${i.cor}">${i.status}</td>
+        </tr>
+    `).join('');
+}
+
+// ✅ NOVO: Função para renderizar a tabela do Almoxerifado
+function renderizarTabelaAlmoxerifado(lista) {
+    const corpo = document.getElementById('tabelaAlmoxerifadoCorpo');
+    if (!corpo) return;
+
+    if (!lista || lista.length === 0) {
+        corpo.innerHTML = `
+            <tr>
+                <td colspan="3" style="padding: 25px; text-align: center; color: #999;">Nenhuma ferramenta encontrada.</td>
+            </tr>`;
+        return;
+    }
+
+    corpo.innerHTML = lista.map(f => `
+        <tr style="border-bottom: 1px solid #222;">
+            <td style="padding: 12px; color: #e60000; font-weight: bold; font-family: monospace;">
+                ${f.codigoBarras || f.CodigoBarras || f.codigo || f.Codigo || f.id || f.Id}
+            </td>
+            <td style="padding: 12px; color: #ddd;">
+                ${f.descricao || f.Descricao || "Sem descrição"}
+            </td>
+            <td style="padding: 12px; text-align: center;">
+                <button onclick="abrirModalRetiradaAlmoxerifado(${f.id || f.Id}, '${f.codigoBarras || f.CodigoBarras || f.codigo || f.Codigo || f.id || f.Id}', '${f.descricao || f.Descricao || "Ferramenta"}')" 
+                        style="background: #e60000; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold;">
+                    RETIRAR
+                </button>
+            </td>
+        </tr>`).join('');
+}
+
+function filtrarAlmoxerifado(termo) {
+    const busca = termo.toUpperCase();
+    const filtrados = ativosBackup.filter(f => {
+        const codigo = (f.codigoBarras || f.CodigoBarras || f.codigo || f.Codigo || f.id || f.Id || "").toString().toUpperCase();
+        const descricao = (f.descricao || f.Descricao || "").toString().toUpperCase();
+        return codigo.includes(busca) || descricao.includes(busca);
+    });
+    renderizarTabelaAlmoxerifado(filtrados);
+}
+
+async function mostrarAlmoxerifado() {
+    const res = await fetch(`${API_URL}/ferramentas`);
+    const ferramentasResposta = res.ok ? await res.json() : await res.text();
+    const ferramentas = Array.isArray(ferramentasResposta) ? ferramentasResposta : [];
+    
+    if (!res.ok) console.error('Erro ao buscar ferramentas:', ferramentasResposta);
+
+    // Filtra apenas as ferramentas que estão no almoxerifado
+    const disponiveis = ferramentas.filter(f => {
+        const setorAtual = (f.setor || f.Setor || "").toString().trim().toUpperCase();
+        return setorAtual === "" || setorAtual === "GERAL" || setorAtual === "ALMOXERIFADO";
+    });
+
+    ativosBackup = disponiveis;
+    const totalDisponiveis = disponiveis.length;
+
+    document.getElementById('app').innerHTML = `
+        <div style="display: flex; min-height: 100vh; background: #080808;">
+            
+            <div style="width: 260px; background: #000; border-right: 1px solid #222; padding: 20px; display: flex; flex-direction: column; justify-content: space-between; position: sticky; top: 0; height: 100vh;">
+                <div>
+                    <h2 style="color: white; margin-bottom: 30px;">TSEA <span style="color: red;">ENERGIA</span></h2>
+                    <nav>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXERIFADO</div>
+                    </nav>
+                </div>
+                <div style="border-top: 1px solid #222; padding-top: 20px;">
+                    <div style="color: #aaa; font-size: 14px; margin-bottom: 10px;">👤 ${usuarioLogado ? usuarioLogado.nome : "Administrador"}</div>
+                    <button onclick="fazerLogout()" style="width: 100%; background: #c00; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 5px;">SAIR</button>
+                </div>
+            </div>
+
+            <div style="flex: 1; padding: 30px; overflow-y: auto;">
+                <div style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 260px;">
+                        <h1 style="color: white; margin: 0 0 10px 0;">📦 Almoxerifado</h1>
+                        <p style="color: #888; margin: 0 0 20px 0;">Ferramentas guardadas no almoxerifado</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtraso()" title="Notificações">
+                            🔔
+                        </button>
+                    </div>
+                </div>
+                <div style="background: #111; border: 1px solid #222; padding: 12px 15px; border-radius: 12px; margin-top: 10px;">
+                    <input id="buscaAlmoxerifado" type="text" placeholder="Digite o código ou a descrição..." 
+
+                           style="width: 100%; background: transparent; border: none; color: white; outline: none; font-size: 14px; font-family: monospace;">
+                </div>
+                <div style="margin-top: 10px; color: #777; font-size: 13px;">Use o campo acima para digitar o código de barras ou parte da descrição.</div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 30px;">
+                    <div style="background: #111; border: 1px solid #e60000; border-radius: 10px; padding: 20px; text-align: center;">
+                        <div style="font-size: 28px; color: #e60000; font-weight: bold;">${totalDisponiveis}</div>
+                        <div style="color: #aaa; font-size: 12px; margin-top: 5px;">TOTAL GUARDADAS</div>
+                    </div>
+                </div>
+
+                <div style="background: #111; border-radius: 10px; border: 1px solid #333; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse; color: white;">
+                        <thead>
+                            <tr style="background: #000; border-bottom: 1px solid #333;">
+                                <th style="padding: 12px; text-align: left; color: #888; font-size: 11px;">CÓDIGO</th>
+                                <th style="padding: 12px; text-align: left; color: #888; font-size: 11px;">DESCRIÇÃO</th>
+                                <th style="padding: 12px; text-align: center; color: #888; font-size: 11px;">AÇÕES</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaAlmoxerifadoCorpo"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+    const buscaInput = document.getElementById('buscaAlmoxerifado');
+    if (buscaInput) buscaInput.value = '';
+    renderizarTabelaAlmoxerifado(disponiveis);
+    atualizarBellBadge(notificacaoAtiva);
+
+    // Scanner no campo de busca do almoxerifado
+    const buscaAlmEl = document.getElementById('buscaAlmoxerifado');
+    if (buscaAlmEl) {
+        scannerSafeInput(buscaAlmEl, (val) => filtrarAlmoxerifado(val));
+        buscaAlmEl.addEventListener('keyup', (e) => {
+            if (e.key !== 'Enter') filtrarAlmoxerifado(buscaAlmEl.value);
+        });
+    }
+}
+
+// ✅ NOVO: Modal para retirar ferramenta do almoxerifado
+function abrirModalRetiradaAlmoxerifado(ferramentaId, codigo, descricao) {
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="modalRetirada" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 2000;">
+            <div style="background: #111; padding: 30px; border-radius: 12px; border: 2px solid #e60000; width: 400px; color: white;">
+                <h2 style="margin-top: 0; color: #e60000; text-align: center;">📦 Retirar do Almoxerifado</h2>
+                
+                <div style="background: #000; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #333;">
+                    <p style="margin: 5px 0; color: #aaa; font-size: 12px;">Código</p>
+                    <p style="margin: 0 0 10px 0; color: #e60000; font-weight: bold; font-family: monospace; font-size: 14px;">${codigo}</p>
+                    
+                    <p style="margin: 10px 0 5px 0; color: #aaa; font-size: 12px;">Descrição</p>
+                    <p style="margin: 0; color: white; font-weight: bold;">${descricao}</p>
+                </div>
+
+                <div style="margin: 25px 0;">
+                    <label style="display: block; margin-bottom: 8px; color: #e60000; font-weight: bold;">
+                        Qual setor receberá essa ferramenta?
+                    </label>
+                    <select id="setorDestino" style="width: 100%; padding: 12px; background: #000; border: 1px solid #e60000; color: white; border-radius: 6px; font-size: 14px;">
+                        <option value="">-- Selecione o setor --</option>
+                        <option value="GERAL">ALMOXERIFADO</option>
+                        <option value="SOLDAGEM">SOLDAGEM</option>
+                        <option value="MONTAGEM">MONTAGEM</option>
+                        <option value="USINAGEM">USINAGEM</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="fecharModalRetirada()" 
+                            style="flex: 1; background: #333; color: #aaa; border: 1px solid #555; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                        CANCELAR
+                    </button>
+                    <button onclick="confirmarRetiradaAlmoxerifado(${ferramentaId})" 
+                            style="flex: 1; background: #e60000; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                        CONFIRMAR
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+}
+
+function fecharModalRetirada() {
+    const modal = document.getElementById('modalRetirada');
+    if (modal) modal.remove();
+}
+
+async function confirmarRetiradaAlmoxerifado(ferramentaId) {
+    const setorDestino = document.getElementById('setorDestino').value;
+
+    if (!setorDestino) {
+        alert('⚠️ Selecione um setor antes de confirmar!');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/ferramentas/${ferramentaId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                Setor: setorDestino
+            })
+        });
+
+        if (response.ok) {
+            alert(`✅ Ferramenta movida para ${setorDestino} com sucesso!`);
+            fecharModalRetirada();
+            mostrarAlmoxerifado(); // Atualiza a lista
+        } else {
+            const erro = await response.text();
+            alert(`❌ Erro: ${erro}`);
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('❌ Erro de conexão com o servidor');
+    }
+}
+
+function abrirModalFerramenta() {
+    const nome = prompt("Digite o nome/descrição da ferramenta:");
+    if (!nome) return;
+
+    fetch(`${API_URL}/ferramentas/cadastrar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Descricao: nome, Status: "DISPONIVEL" })
+    }).then(res => {
+        if (res.ok) {
+            alert("Ferramenta adicionada!");
+            mostrarAdmin(); // Atualiza a lista
+        }
+    });
+}
+
+function mostrarOperador() {
+    document.getElementById('app').innerHTML = `
+        <div class="header">
+            <span class="session-timer" id="timerText">EXPIRA EM: 10:00</span>
+            <strong>${currentUser}</strong>
+            <button class="btn-logout" onclick="fazerLogout()">SAIR</button>
+        </div>
+        <div class="container-center">
+            <div style="display:flex; gap:30px">
+                <button onclick="scan('RETIRAR')" style="background:var(--green); width:220px; height:140px; border:none; border-radius:15px; color:white; font-weight:bold; cursor:pointer; font-size:1.2rem">RETIRAR</button>
+                <button onclick="scan('DEVOLVER')" style="background:var(--blue); width:220px; height:140px; border:none; border-radius:15px; color:white; font-weight:bold; cursor:pointer; font-size:1.2rem">DEVOLVER</button>
+            </div>
+        </div>`;
+    carregarAvisosOperador();
+}
+    
+function mostrarLogin() {
+    currentUser = "";
+    clearInterval(timerInterval);
+
+    document.getElementById('app').innerHTML = `
+        <div class="container-center">
+            <div class="main-card">
+                <h1>TSEA <span style="color:red">SYSTEM</span></h1>
+                <div style="position:relative"><div class="laser-line"></div>
+                <input type="text" id="barcode" class="input-scan" placeholder="BIPE O CRACHÁ" autofocus></div>
+
+                <div id="passwordWrapper" style="position:relative; margin-top:10px; display:none;">
+                    <input type="password" id="passwordLogin" class="input-scan"
+                           placeholder="SENHA (Apenas ADMIN)"
+                           style="width:100%; padding-right:50px;"
+                           autocomplete="current-password">
+                    <button id="togglePassword" type="button" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:#fff; font-size:1.2rem; cursor:pointer;">
+                        
+                    </button>
+                </div>
+
+                <!-- ✅ NOVO: campo de email, aparece só quando admin não está cadastrado -->
+                <div id="emailCadastroArea" style="display:none; margin-top:10px;">
+                    <small style="color:#ffcc00; display:block; margin-bottom:6px;">
+                        ⚠️ Admin não encontrado. Informe seu email para cadastrar:
+                    </small>
+                    <input type="email" id="emailCadastro" class="input-scan"
+                           placeholder="SEU EMAIL"
+                           style="font-size:1rem;">
+                </div>
+
+                <button id="forgotPasswordButton" class="btn-cadastro"
+                        onclick="esqueciSenha()"
+                        style="display:none; margin-top:10px;">
+                    Esqueceu a senha?
+                </button>
+
+                <button class="btn-logout" onclick="loginBackend()" style="margin-top:10px;">ENTRAR</button>
+                <button class="btn-cadastro" onclick="mostrarTelaCadastro()">+ CADASTRAR NOVO FUNCIONÁRIO</button>
+                <small style="color:#777; display:block; margin-top:10px; text-align:center;">
+                    Se o crachá terminar com A, informe a senha.
+                </small>
+            </div>
+        </div>`;
+
+    const barcodeInput   = document.getElementById('barcode');
+    const passwordInput  = document.getElementById('passwordLogin');
+    const passwordWrapper = document.getElementById('passwordWrapper');
+    const togglePassword  = document.getElementById('togglePassword');
+    const forgotButton   = document.getElementById('forgotPasswordButton');
+
+    const updateLoginFields = () => {
+        if (!barcodeInput) return;
+
+        const cleanedValue = normalizeScannerBarcode(barcodeInput.value);
+        if (cleanedValue !== barcodeInput.value) {
+            barcodeInput.value = cleanedValue;
+        }
+
+        const isAdminInput = cleanedValue.toUpperCase().endsWith('A');
+        if (isAdminInput) {
+            if (passwordWrapper) passwordWrapper.style.display = 'block';
+            if (forgotButton) forgotButton.style.display = 'block';
+        } else {
+            if (passwordWrapper) passwordWrapper.style.display = 'none';
+            if (forgotButton) forgotButton.style.display = 'none';
+        }
+
+        // Se trocar o crachá, esconde a área de email novamente
+        const emailArea = document.getElementById('emailCadastroArea');
+        if (emailArea) emailArea.style.display = 'none';
+    };
+
+    const loginOnEnter = (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (!barcodeInput) return;
+
+        let cleanedValue = normalizeScannerBarcode(barcodeInput.value);
+
+        // Se veio do scanner (Enter chegou menos de 100ms após última tecla), remove o char extra
+        if (_keyTimes.length > 0 && (Date.now() - _keyTimes[_keyTimes.length - 1]) < 100) {
+            if (cleanedValue.length > 1) cleanedValue = cleanedValue.slice(0, -1);
+        }
+
+        _keyTimes = [];
+        barcodeInput.value = cleanedValue;
+
+        const isAdminInput = cleanedValue.toUpperCase().endsWith('A');
+        const passwordEmpty = !passwordInput?.value.trim();
+        if (isAdminInput && passwordEmpty) {
+            if (passwordWrapper) passwordWrapper.style.display = 'block';
+            if (forgotButton) forgotButton.style.display = 'block';
+            setTimeout(() => passwordInput?.focus(), 50);
+            return;
+        }
+
+        loginBackend(cleanedValue);
+    };
+
+    let _keyTimes = [];
+
+    if (barcodeInput) {
+        barcodeInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') _keyTimes.push(Date.now());
+        });
+        barcodeInput.addEventListener('keydown', loginOnEnter);
+        barcodeInput.focus();
+    }
+    if (passwordInput) passwordInput.addEventListener('keydown', loginOnEnter);
+    if (togglePassword) {
+        togglePassword.addEventListener('click', () => {
+            if (!passwordInput) return;
+            const isHidden = passwordInput.type === 'password';
+            passwordInput.type = isHidden ? 'text' : 'password';
+            togglePassword.textContent = isHidden ? '🙈' : '👁️';
+            passwordInput.focus();
+        });
+    }
+}
+    function mostrarOperador() {
+        document.getElementById('app').innerHTML = `
+            <div class="header" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span class="session-timer" id="timerText">EXPIRA EM: 10:00</span>
+                    <strong>${currentUser}</strong>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtrasoOperador()" title="Notificações">
+                        🔔
+                    </button>
+                    <button class="btn-logout" onclick="mostrarLogin()">SAIR</button>
+                </div>
+            </div>
+            <div class="container-center">
+                <div style="display:flex; gap:30px">
+                    <button onclick="scan('RETIRAR')" style="background:var(--green); width:220px; height:140px; border:none; border-radius:15px; color:white; font-weight:bold; cursor:pointer">RETIRAR</button>
+                    <button onclick="scan('DEVOLVER')" style="background:var(--blue); width:220px; height:140px; border:none; border-radius:15px; color:white; font-weight:bold; cursor:pointer">DEVOLVER</button>
+                </div>
+            </div>`;
+        carregarAvisosOperador();
+    }
+
+    async function carregarAvisosOperador() {
+        if (!currentUserId) return;
+
+        try {
+            const res = await fetch(`${API_URL}/avisos/${encodeURIComponent(currentUserId)}`);
+            const avisos = res.ok ? await res.json() : [];
+            atualizarBellBadge(Array.isArray(avisos) && avisos.length > 0);
+        } catch (err) {
+            console.error('Erro ao carregar avisos do operador:', err);
+        }
+    }
+
+    function scan(m) {
+    document.getElementById('app').innerHTML = `
+        <div class="header">
+            <button class="btn-logout" onclick="mostrarOperador()">← VOLTAR</button>
+            <span id="timerText" class="session-timer"></span>
+        </div>
+        <div class="container-center">
+            <div class="main-card">
+                <h2>MODO ${m}</h2>
+                <div style="position:relative">
+                    <div class="laser-line"></div>
+                    <input type="text" id="bipOp" class="input-scan" placeholder="BIPE A FERRAMENTA" autofocus>
+                </div>
+                <p id="feedback" style="font-weight:bold; margin-top:10px;"></p>
+            </div>
+        </div>`;
+
+    const inputBip = document.getElementById('bipOp');
+    inputBip.focus();
+
+    let _keyTimesBip = [];
+    inputBip.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') _keyTimesBip.push(Date.now());
+    });
+
+    inputBip.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            // Remove char extra do scanner
+            if (_keyTimesBip.length > 0 && (Date.now() - _keyTimesBip[_keyTimesBip.length - 1]) < 100) {
+                if (e.target.value.length > 1)
+                    e.target.value = e.target.value.slice(0, -1);
+            }
+            _keyTimesBip = [];
+            const valorDigitado = e.target.value.trim();
+            
+            if (valorDigitado === "") {
+                document.getElementById('feedback').innerText = "POR FAVOR, BIPE UMA FERRAMENTA!";
+                document.getElementById('feedback').style.color = "orange";
+                return;
+            }
+
+            // Chama a movimentação passando o valor capturado AGORA
+            realizarMovimentacao(m, valorDigitado);
+            e.target.value = ""; // Limpa o campo para o próximo bip
+        }
+    });
+}
+
+    // Remove o char extra do scanner se Enter chegou < 100ms após última tecla
+    function scannerSafeInput(inputEl, callback) {
+        let _kt = [];
+        inputEl.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') {
+                _kt.push(Date.now());
+            } else {
+                if (_kt.length > 0 && (Date.now() - _kt[_kt.length - 1]) < 100) {
+                    if (inputEl.value.length > 1)
+                        inputEl.value = inputEl.value.slice(0, -1);
+                }
+                _kt = [];
+                if (callback) callback(inputEl.value);
+            }
+        });
+        // Também remove no keyup para campos que usam onkeyup
+        inputEl.addEventListener('keyup', (e) => {
+            if (e.key !== 'Enter' && _kt.length > 0) {
+                // Verifica se o valor atual tem char extra (última digitação muito rápida)
+                // Não faz nada aqui — só remove no Enter
+            }
+        });
+    }
+
+    function normalizeScannerBarcode(value) {
+        if (!value) return '';
+        var v = value;
+        v = v.split('\r').join('');
+        v = v.split('\n').join('');
+        v = v.split('\t').join('');
+        return v.trim().toUpperCase();
+    }
+
+    mostrarLogin();
+</script>
+</body>
+</html>
