@@ -57,7 +57,7 @@
         .bell-btn { background: none; border: none; font-size: 20px; cursor: pointer; position: relative; color: white; display: inline-flex; align-items: center; }
         .alert-dot { position: absolute; top: 0; right: 0; width: 10px; height: 10px; background: red; border-radius: 50%; box-shadow: 0 0 6px red; }
         .session-timer { color: var(--yellow); font-family: monospace; font-weight: bold; }
-        #modalNotificacao { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 350px; background: #111; border: 1px solid red; padding: 20px; z-index: 2000; display: none; }
+        #modalNotificacao { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: auto; min-width: 360px; max-width: 580px; background: transparent; border: none; padding: 0; z-index: 2000; display: none; }
         /* No seu <style> */
 .setor-S { border-left: 10px solid #ffcc00; } /* Solda - Amarelo */
 .setor-M { border-left: 10px solid #0056b3; } /* Montagem - Azul */
@@ -336,51 +336,54 @@ function atualizarBellBadge(tem) {
 }
 
 function abrirNotificacaoAtraso() {
-    if (notificacaoAtiva && ferramentaAtrasada) {
-        mostrarNotificacaoAtraso(ferramentaAtrasada);
-        return;
-    }
-
     const ferramentasAtrasadas = ativosBackup.filter(f => {
         const status = ((f.status || f.Status || '').toString().toUpperCase());
         return status === 'EM_USO' || status === 'ATRASADO';
     });
 
+    const modal = document.getElementById('modalNotificacao');
+    modal.style.display = 'block';
+
     if (ferramentasAtrasadas.length === 0) {
-        document.getElementById('modalNotificacao').style.display = 'block';
-        document.getElementById('modalNotificacao').innerHTML = `
-            <h2 style="color: #e60000; margin-top: 0;">Sem avisos</h2>
-            <p>Não há ferramentas atrasadas ou em uso pendente de devolução no momento.</p>
-            <button onclick="document.getElementById('modalNotificacao').style.display='none'" style="width:100%; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">FECHAR</button>
-        `;
+        modal.innerHTML = `
+            <div style="background:#111; border:1px solid #333; border-radius:12px; padding:25px; min-width:340px; max-width:520px;">
+                <h2 style="color:#00cc00; margin-top:0; font-size:16px;">Sem pendencias</h2>
+                <p style="color:#aaa; font-size:14px;">Nao ha ferramentas atrasadas ou em uso no momento.</p>
+                <button onclick="document.getElementById('modalNotificacao').style.display='none'"
+                        style="width:100%; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; margin-top:10px; font-weight:bold;">FECHAR</button>
+            </div>`;
         return;
     }
 
-    ferramentaAtrasada = ferramentasAtrasadas[0];
-    document.getElementById('modalNotificacao').style.display = 'block';
-    mostrarNotificacaoAtraso(ferramentaAtrasada);
+    window._ferramentasParaAviso = ferramentasAtrasadas;
+
+    const cards = ferramentasAtrasadas.map(f => {
+        const colaborador = (f.colaborador || f.Colaborador || 'Operador desconhecido').toUpperCase();
+        const cracha      = f.colaboradorId || f.ColaboradorId || f.usuarioId || f.UsuarioId || colaborador;
+        const desc        = (f.descricao || f.Descricao || 'Ferramenta').toUpperCase();
+        const codigo      = f.codigoBarras || f.CodigoBarras || ('TSEA-' + String(f.id||f.Id).padStart(3,'0'));
+        const status      = (f.status || f.Status || '').toUpperCase();
+        const corStatus   = status === 'ATRASADO' ? '#ff4444' : '#ffaa00';
+        return '<div style="background:#1a1a1a; border:1px solid #333; border-radius:8px; padding:14px 16px; margin-bottom:10px;">'
+            + '<div style="font-size:11px; color:#e60000; font-weight:bold; letter-spacing:1px; margin-bottom:6px;">AVISO</div>'
+            + '<div style="color:white; font-size:14px; font-weight:bold; margin-bottom:4px;">Funcionario <span style="color:#e60000;">' + cracha + '</span> esta com a ferramenta</div>'
+            + '<div style="color:#ddd; font-size:14px;">' + desc + ' <span style="color:#e60000; font-family:monospace;">(' + codigo + ')</span></div>'
+            + '<div style="margin-top:6px;"><span style="color:' + corStatus + '; font-size:11px; font-weight:bold;">● ' + status + '</span></div>'
+            + '</div>';
+    }).join('');
+
+    modal.innerHTML = '<div style="background:#111; border:1px solid #444; border-radius:12px; padding:22px; min-width:360px; max-width:560px; max-height:80vh; display:flex; flex-direction:column;">'
+        + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">'
+        + '<h2 style="color:#e60000; margin:0; font-size:16px;">Ferramentas em Atraso (' + ferramentasAtrasadas.length + ')</h2>'
+        + '<button onclick="document.getElementById(\'modalNotificacao\').style.display=\'none\'" style="background:none; border:none; color:#666; font-size:20px; cursor:pointer;">x</button>'
+        + '</div>'
+        + '<div style="overflow-y:auto; flex:1; padding-right:4px; margin-bottom:14px;">' + cards + '</div>'
+        + '<button onclick="enviarAvisoAdminTodos()" style="width:100%; background:#e60000; color:white; border:none; padding:14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:15px; letter-spacing:1px;">ENVIAR AVISO</button>'
+        + '</div>';
 }
 
 function mostrarNotificacaoAtraso(ferramenta) {
-    const nomeColaborador = ferramenta.colaborador || ferramenta.Colaborador || 'Operador desconhecido';
-    const descricao = ferramenta.descricao || ferramenta.Descricao || 'Ferramenta sem descrição';
-    const codigo = ferramenta.codigoBarras || ferramenta.CodigoBarras || `ID ${ferramenta.id || ferramenta.Id}`;
-    const status = ((ferramenta.status || ferramenta.Status || '').toString().toUpperCase());
-    const motivo = status === 'ATRASADO'
-        ? 'Esta ferramenta já está com status ATRASADO.'
-        : 'Ela ficou em uso por mais de 30 segundos sem devolução.';
-
-    document.getElementById('modalNotificacao').style.display = 'block';
-    document.getElementById('modalNotificacao').innerHTML = `
-        <h2 style="color: #e60000; margin-top: 0;">🚨 Aviso de ferramenta atrasada</h2>
-        <p>O operador <strong>${nomeColaborador}</strong> está com a ferramenta:</p>
-        <p style="font-weight:bold; color:white;">${descricao} (${codigo})</p>
-        <p>${motivo} Envie um aviso para o operador.</p>
-        <div style="display:flex; gap:10px; margin-top:20px;">
-            <button onclick="enviarAvisoAdmin()" style="flex:1; background:#e60000; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">ENVIAR AVISO</button>
-            <button onclick="document.getElementById('modalNotificacao').style.display='none'" style="flex:1; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">FECHAR</button>
-        </div>
-    `;
+    abrirNotificacaoAtraso();
 }
 
 function abrirNotificacaoAtrasoOperador() {
@@ -415,17 +418,28 @@ function abrirNotificacaoAtrasoOperador() {
 }
 
 function mostrarNotificacaoOperador(aviso) {
-    const mensagem = aviso.mensagem || 'Você recebeu um aviso do administrador.';
+    const mensagem = aviso.mensagem || 'Voce recebeu um aviso do administrador.';
 
     document.getElementById('modalNotificacao').style.display = 'block';
-    document.getElementById('modalNotificacao').innerHTML = `
-        <h2 style="color: #e60000; margin-top: 0;">🔔 Aviso do administrador</h2>
-        <p>${mensagem}</p>
-        <div style="display:flex; gap:10px; margin-top:20px;">
-            <button onclick="marcarAvisoLido(${aviso.id})" style="flex:1; background:#e60000; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">MARCAR COMO LIDO</button>
-            <button onclick="document.getElementById('modalNotificacao').style.display='none'" style="flex:1; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">FECHAR</button>
-        </div>
-    `;
+    document.getElementById('modalNotificacao').innerHTML =
+        '<div style="background:#111; border:2px solid #e60000; border-radius:12px; padding:24px; min-width:300px; max-width:420px;">'
+        + '<h2 style="color:#e60000; margin-top:0; font-size:16px;">Aviso do administrador</h2>'
+        + '<p style="color:#ddd; font-size:14px; line-height:1.5; margin-bottom:20px;">' + mensagem + '</p>'
+        + '<button onclick="devolverPorAviso(' + aviso.id + ')" style="width:100%; background:#e60000; color:white; border:none; padding:14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:15px; letter-spacing:1px; margin-bottom:10px;">DEVOLVER</button>'
+
+        + '</div>';
+}
+
+async function devolverPorAviso(avisoId) {
+    // Marca o aviso como lido e abre a tela de devolucao automaticamente
+    try {
+        await fetch(`${API_URL}/avisos/${avisoId}/lido`, { method: 'POST' });
+    } catch(e) {}
+    notificacaoAtiva = false;
+    atualizarBellBadge(false);
+    document.getElementById('modalNotificacao').style.display = 'none';
+    // Abre direto a tela de devolucao
+    scan('DEVOLVER');
 }
 
 async function marcarAvisoLido(id) {
@@ -446,59 +460,53 @@ async function marcarAvisoLido(id) {
 }
 
 async function enviarAvisoAdmin() {
-    if (!ferramentaAtrasada) return;
+    await enviarAvisoAdminTodos();
+}
 
-    const descricao = ferramentaAtrasada.descricao || ferramentaAtrasada.Descricao || 'ferramenta';
-    const codigo    = ferramentaAtrasada.codigoBarras || ferramentaAtrasada.CodigoBarras ||
-                      ("TSEA-" + String(ferramentaAtrasada.id || ferramentaAtrasada.Id).padStart(3,"0"));
-    const nomeColaborador = ferramentaAtrasada.colaborador || ferramentaAtrasada.Colaborador || '';
+async function enviarAvisoAdminTodos() {
+    const lista = window._ferramentasParaAviso || [];
+    if (lista.length === 0) { alert('Nenhuma ferramenta para avisar.'); return; }
 
-    // Tenta pegar o ID direto do objeto
-    let operadorId = ferramentaAtrasada.colaboradorId || ferramentaAtrasada.ColaboradorId ||
-                     ferramentaAtrasada.usuarioId     || ferramentaAtrasada.UsuarioId || '';
-
-    // Se não veio o ID, busca o usuário pelo nome para pegar o CodigoBarras
-    if (!operadorId && nomeColaborador) {
-        try {
-            const resUsuarios = await fetch(`${API_URL}/usuarios`);
-            if (resUsuarios.ok) {
-                const usuarios = await resUsuarios.json();
-                const usuario = usuarios.find(u =>
-                    (u.nome || u.Nome || '').toUpperCase() === nomeColaborador.toUpperCase()
-                );
-                if (usuario) operadorId = usuario.codigoBarras || usuario.CodigoBarras || '';
-            }
-        } catch (err) {
-            console.warn('Erro ao buscar usuário pelo nome:', err);
-        }
-    }
-
-    if (!operadorId) {
-        alert(`❌ Não foi possível encontrar o código do operador "${nomeColaborador}". Verifique se ele está cadastrado.`);
-        return;
-    }
-
+    let usuarios = [];
     try {
-        const res = await fetch(`${API_URL}/avisos`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                FerramentaId: ferramentaAtrasada.id || ferramentaAtrasada.Id,
-                UsuarioId: operadorId,
-                Mensagem: `Você está atrasado na entrega da ferramenta ${descricao} (${codigo}). Favor devolver imediatamente.`
-            })
-        });
+        const resU = await fetch(`${API_URL}/usuarios`);
+        if (resU.ok) usuarios = await resU.json();
+    } catch(e) {}
 
-        if (res.ok) {
-            alert('✅ Aviso enviado ao operador com sucesso!');
-            document.getElementById('modalNotificacao').style.display = 'none';
-        } else {
-            const text = await res.text();
-            alert('Erro ao enviar aviso: ' + text);
+    let enviados = 0, erros = 0;
+
+    for (const f of lista) {
+        const descricao = f.descricao || f.Descricao || 'ferramenta';
+        const codigo    = f.codigoBarras || f.CodigoBarras || ('TSEA-' + String(f.id || f.Id).padStart(3,'0'));
+        const nomeColaborador = f.colaborador || f.Colaborador || '';
+        let operadorId = f.colaboradorId || f.ColaboradorId || f.usuarioId || f.UsuarioId || '';
+
+        if (!operadorId && nomeColaborador) {
+            const u = usuarios.find(u => (u.nome || u.Nome || '').toUpperCase() === nomeColaborador.toUpperCase());
+            if (u) operadorId = u.codigoBarras || u.CodigoBarras || '';
         }
-    } catch (err) {
-        console.error('Erro ao enviar aviso ao operador:', err);
-        alert('Erro de conexão ao enviar aviso.');
+
+        if (!operadorId) { erros++; continue; }
+
+        try {
+            const res = await fetch(`${API_URL}/avisos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    FerramentaId: f.id || f.Id,
+                    UsuarioId: operadorId,
+                    Mensagem: 'Voce esta atrasado na entrega da ferramenta ' + descricao + ' (' + codigo + '). Favor devolver imediatamente.'
+                })
+            });
+            if (res.ok) enviados++; else erros++;
+        } catch(e) { erros++; }
+    }
+
+    document.getElementById('modalNotificacao').style.display = 'none';
+    if (erros === 0) {
+        alert('Aviso enviado para ' + enviados + ' operador(es) com sucesso!');
+    } else {
+        alert('Avisos enviados: ' + enviados + '. Nao foi possivel enviar para: ' + erros + ' (operador sem cadastro ou erro de conexao).');
     }
 }
 
@@ -1492,6 +1500,8 @@ async function mostrarAdmin(filtroSetor = 'GERAL') {
                         <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()">📋 INVENTÁRIO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()">📈 RELATÓRIOS</div>
                     </nav>
                     <div style="border-top: 1px solid #333; margin-top: 20px; padding-top: 15px;">
                         <button onclick="limparColaboradoresInvalidos()" style="width: 100%; background: #333; color: #aaa; border: 1px solid #555; padding: 10px; cursor: pointer; border-radius: 5px; font-size: 12px; margin-bottom: 10px;">
@@ -1582,6 +1592,8 @@ async function mostrarOficina() {
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
                         <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()">📋 INVENTÁRIO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()">📈 RELATÓRIOS</div>
                     </nav>
                 </div>
                 <div style="border-top: 1px solid #222; padding-top: 20px;">
@@ -2023,7 +2035,7 @@ async function mostrarAlmoxerifado() {
     // Filtra apenas as ferramentas que estão no almoxerifado
     const disponiveis = ferramentas.filter(f => {
         const setorAtual = (f.setor || f.Setor || "").toString().trim().toUpperCase();
-        return setorAtual === "" || setorAtual === "GERAL" || setorAtual === "ALMOXERIFADO";
+        return setorAtual === "" || setorAtual === "GERAL" || setorAtual === "ALMOXERIFADO" || setorAtual === "ALMOXARIFADO";
     });
 
     ativosBackup = disponiveis;
@@ -2039,13 +2051,9 @@ async function mostrarAlmoxerifado() {
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
                         <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()">📋 INVENTÁRIO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()">📈 RELATÓRIOS</div>
                     </nav>
-                </div>
-                <div style="border-top: 1px solid #222; padding-top: 20px;">
-                    <div style="color: #aaa; font-size: 14px; margin-bottom: 10px;">👤 ${usuarioLogado ? usuarioLogado.nome : "Administrador"}</div>
-                    <button onclick="fazerLogout()" style="width: 100%; background: #c00; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 5px;">SAIR</button>
-                </div>
-            </div>
 
             <div style="flex: 1; padding: 30px; overflow-y: auto;">
                 <div style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap;">
@@ -2445,6 +2453,450 @@ function mostrarLogin() {
         v = v.split('\t').join('');
         return v.trim().toUpperCase();
     }
+
+
+// ===================== INVENTÁRIO DE ARMÁRIOS =====================
+
+async function mostrarInventario() {
+    const res = await fetch(`${API_URL}/ferramentas`);
+    const resposta = res.ok ? await res.json() : [];
+    const todas = Array.isArray(resposta) ? resposta : [];
+
+    const setores = ['USINAGEM', 'MONTAGEM', 'SOLDAGEM', 'ALMOXARIFADO'];
+
+    // Agrupa ferramentas por setor
+    function ferramentasDoSetor(setor) {
+        return todas.filter(f => {
+            const s = (f.setor || f.Setor || '').toString().trim().toUpperCase();
+            if (setor === 'ALMOXARIFADO') return s === '' || s === 'GERAL' || s === 'ALMOXARIFADO' || s === 'ALMOXERIFADO';
+            return s === setor;
+        });
+    }
+
+    const resumo = setores.map(s => {
+        const lista = ferramentasDoSetor(s);
+        const disponiveis = lista.filter(f => (f.status || f.Status || '').toUpperCase() === 'DISPONIVEL').length;
+        const emUso       = lista.filter(f => (f.status || f.Status || '').toUpperCase() === 'EM_USO').length;
+        const manutencao  = lista.filter(f => (f.status || f.Status || '').toUpperCase() === 'MANUTENCAO').length;
+        return { setor: s, total: lista.length, disponiveis, emUso, manutencao };
+    });
+
+    const coresSetor = {
+        USINAGEM:     { borda: '#ff9900', icone: '⚙️' },
+        MONTAGEM:     { borda: '#0056b3', icone: '🔩' },
+        SOLDAGEM:     { borda: '#ffcc00', icone: '🔥' },
+        ALMOXARIFADO: { borda: '#28a745', icone: '📦' }
+    };
+
+    document.getElementById('app').innerHTML = `
+        <div style="display:flex; min-height:100vh; background:#080808;">
+
+            <!-- Sidebar -->
+            <div style="width:260px; background:#000; border-right:1px solid #222; padding:20px; display:flex; flex-direction:column; justify-content:space-between; position:sticky; top:0; height:100vh;">
+                <div>
+                    <h2 style="color:white; margin-bottom:30px;">TSEA <span style="color:red;">ENERGIA</span></h2>
+                    <nav>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white; background:#111;" onclick="mostrarInventario()">📋 INVENTÁRIO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()">📈 RELATÓRIOS</div>
+                    </nav>
+                </div>
+                <div style="border-top:1px solid #222; padding-top:20px;">
+                    <div style="color:#aaa; font-size:14px; margin-bottom:10px;">👤 ${usuarioLogado ? usuarioLogado.nome : 'Administrador'}</div>
+                    <button onclick="fazerLogout()" style="width:100%; background:#c00; color:white; border:none; padding:12px; cursor:pointer; border-radius:5px; font-weight:bold;">SAIR DA CONTA</button>
+                </div>
+            </div>
+
+            <!-- Conteúdo -->
+            <div style="flex:1; padding:30px; overflow-y:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
+                    <div>
+                        <h1 style="color:white; margin:0 0 5px 0;">📋 Inventário de Armários</h1>
+                        <p style="color:#666; margin:0; font-size:14px;">Visualize e imprima a lista de ferramentas por setor</p>
+                    </div>
+                    <button onclick="imprimirInventarioTodos()"
+                            style="background:#e60000; color:white; border:none; padding:12px 22px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">
+                        🖨️ IMPRIMIR TODOS
+                    </button>
+                </div>
+
+                <!-- Cards resumo -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:15px; margin-bottom:35px;">
+                    ${resumo.map(r => `
+                        <div style="background:#111; border:1px solid ${coresSetor[r.setor].borda}; border-radius:10px; padding:20px; text-align:center; cursor:pointer;"
+                             onclick="abrirInventarioSetor('${r.setor}')">
+                            <div style="font-size:28px;">${coresSetor[r.setor].icone}</div>
+                            <div style="color:white; font-weight:bold; font-size:16px; margin:8px 0;">${r.setor}</div>
+                            <div style="color:${coresSetor[r.setor].borda}; font-size:26px; font-weight:bold;">${r.total}</div>
+                            <div style="color:#666; font-size:11px; margin-top:4px;">ferramentas</div>
+                            <div style="display:flex; justify-content:center; gap:12px; margin-top:10px; font-size:11px;">
+                                <span style="color:#00ff00;">● ${r.disponiveis} disp.</span>
+                                <span style="color:#ffaa00;">● ${r.emUso} uso</span>
+                                ${r.manutencao > 0 ? `<span style="color:#ff4444;">● ${r.manutencao} man.</span>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <!-- Tabelas de cada setor -->
+                ${setores.map(setor => {
+                    const lista = ferramentasDoSetor(setor);
+                    const cor = coresSetor[setor].borda;
+                    const icone = coresSetor[setor].icone;
+                    return `
+                    <div id="bloco-${setor}" style="background:#111; border:1px solid #222; border-radius:12px; margin-bottom:30px; overflow:hidden;">
+                        <div style="background:#000; padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid ${cor};">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <span style="font-size:22px;">${icone}</span>
+                                <div>
+                                    <span style="color:white; font-weight:bold; font-size:16px;">${setor}</span>
+                                    <span style="color:#555; font-size:13px; margin-left:10px;">${lista.length} ferramenta${lista.length !== 1 ? 's' : ''}</span>
+                                </div>
+                            </div>
+                            <button onclick="abrirInventarioSetor('${setor}')"
+                                    style="background:${cor}; color:#000; border:none; padding:8px 18px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">
+                                🖨️ IMPRIMIR
+                            </button>
+                        </div>
+                        <table style="width:100%; border-collapse:collapse; color:white;">
+                            <thead>
+                                <tr style="color:#555; font-size:11px; text-transform:uppercase; background:#0a0a0a;">
+                                    <th style="padding:10px 15px; text-align:left;">#</th>
+                                    <th style="padding:10px 15px; text-align:left;">Código</th>
+                                    <th style="padding:10px 15px; text-align:left;">Descrição</th>
+                                    <th style="padding:10px 15px; text-align:left;">Status</th>
+                                    <th style="padding:10px 15px; text-align:left;">Vida Útil</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${lista.length === 0
+                                    ? `<tr><td colspan="5" style="padding:20px; text-align:center; color:#444;">Nenhuma ferramenta neste setor.</td></tr>`
+                                    : lista.map((f, idx) => {
+                                        const cod  = f.codigoBarras || f.CodigoBarras || `TSEA-${String(f.id || f.Id).padStart(3,'0')}`;
+                                        const desc = f.descricao || f.Descricao || '—';
+                                        const st   = (f.status || f.Status || 'DISPONIVEL').toUpperCase();
+                                        const vida = f.vidaUtil !== undefined ? f.vidaUtil : (f.VidaUtil || 0);
+                                        const stCor = st === 'DISPONIVEL' ? '#00ff00' : st === 'EM_USO' ? '#ffaa00' : '#ff4444';
+                                        return `<tr style="border-bottom:1px solid #1a1a1a;">
+                                            <td style="padding:12px 15px; color:#444; font-size:12px;">${idx + 1}</td>
+                                            <td style="padding:12px 15px; color:#e60000; font-family:monospace; font-weight:bold; font-size:13px;">${cod}</td>
+                                            <td style="padding:12px 15px; color:#ddd;">${desc}</td>
+                                            <td style="padding:12px 15px;"><span style="color:${stCor}; font-size:12px; font-weight:bold;">● ${st}</span></td>
+                                            <td style="padding:12px 15px;">
+                                                <div style="display:flex; align-items:center; gap:8px;">
+                                                    <div style="width:70px; height:5px; background:#222; border-radius:3px; overflow:hidden;">
+                                                        <div style="width:${vida}%; height:100%; background:${vida < 30 ? '#ff4444' : '#00ff00'};"></div>
+                                                    </div>
+                                                    <span style="color:#555; font-size:11px;">${vida}%</span>
+                                                </div>
+                                            </td>
+                                        </tr>`;
+                                    }).join('')
+                                }
+                            </tbody>
+                        </table>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function abrirInventarioSetor(setor) {
+    // Busca as ferramentas exibidas no bloco do setor para montar o HTML de impressão
+    fetch(`${API_URL}/ferramentas`)
+        .then(r => r.json())
+        .then(todas => {
+            const coresSetor = {
+                USINAGEM:     { cor: '#ff9900', icone: '⚙️' },
+                MONTAGEM:     { cor: '#0056b3', icone: '🔩' },
+                SOLDAGEM:     { cor: '#ffcc00', icone: '🔥' },
+                ALMOXARIFADO: { cor: '#28a745', icone: '📦' }
+            };
+
+            const lista = todas.filter(f => {
+                const s = (f.setor || f.Setor || '').toString().trim().toUpperCase();
+                if (setor === 'ALMOXARIFADO') return s === '' || s === 'GERAL' || s === 'ALMOXARIFADO' || s === 'ALMOXERIFADO';
+                return s === setor;
+            });
+
+            const disponiveis = lista.filter(f => (f.status||f.Status||'').toUpperCase()==='DISPONIVEL').length;
+            const emUso       = lista.filter(f => (f.status||f.Status||'').toUpperCase()==='EM_USO').length;
+            const manutencao  = lista.filter(f => (f.status||f.Status||'').toUpperCase()==='MANUTENCAO').length;
+            const cor = (coresSetor[setor] || {}).cor || '#e60000';
+            const now = new Date().toLocaleString('pt-BR');
+
+            const linhas = lista.map((f, idx) => {
+                const cod  = f.codigoBarras || f.CodigoBarras || `TSEA-${String(f.id||f.Id).padStart(3,'0')}`;
+                const desc = f.descricao || f.Descricao || '—';
+                const st   = (f.status || f.Status || 'DISPONIVEL').toUpperCase();
+                const vida = f.vidaUtil !== undefined ? f.vidaUtil : (f.VidaUtil || 0);
+                return `<tr>
+                    <td>${idx + 1}</td>
+                    <td><b>${cod}</b></td>
+                    <td>${desc}</td>
+                    <td>${st}</td>
+                    <td>${vida}%</td>
+                    <td style="text-align:center;">☐</td>
+                </tr>`;
+            }).join('');
+
+            const html = `<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8">
+            <title>Inventário – ${setor}</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 30px; color: #111; }
+                h1 { color: ${cor}; margin: 0 0 4px 0; }
+                .sub { color: #555; font-size: 13px; margin-bottom: 20px; }
+                .resumo { display: flex; gap: 20px; margin-bottom: 20px; }
+                .resumo div { background: #f5f5f5; padding: 10px 18px; border-radius: 8px; font-size: 13px; }
+                .resumo b { display: block; font-size: 20px; }
+                table { width: 100%; border-collapse: collapse; font-size: 13px; }
+                th { background: ${cor}; color: white; padding: 10px; text-align: left; font-size: 12px; }
+                td { padding: 9px 10px; border-bottom: 1px solid #eee; }
+                tr:nth-child(even) td { background: #fafafa; }
+                .footer { margin-top: 30px; font-size: 11px; color: #aaa; border-top: 1px solid #ddd; padding-top: 10px; display:flex; justify-content:space-between; }
+                @media print {
+                    button { display: none !important; }
+                    body { padding: 15px; }
+                }
+            </style></head><body>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h1>📋 Inventário do Armário – ${setor}</h1>
+                    <div class="sub">Gerado em: ${now} &nbsp;|&nbsp; Total: ${lista.length} ferramentas</div>
+                </div>
+                <button onclick="window.print()" style="background:${cor}; color:white; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">🖨️ IMPRIMIR</button>
+            </div>
+            <div class="resumo">
+                <div><b style="color:#28a745;">${disponiveis}</b>Disponíveis</div>
+                <div><b style="color:#ff9900;">${emUso}</b>Em Uso</div>
+                <div><b style="color:#e60000;">${manutencao}</b>Manutenção</div>
+                <div><b>${lista.length}</b>Total</div>
+            </div>
+            <table>
+                <thead><tr>
+                    <th>#</th><th>Código</th><th>Descrição</th><th>Status</th><th>Vida Útil</th><th style="text-align:center;">✔ Conf.</th>
+                </tr></thead>
+                <tbody>${linhas || '<tr><td colspan="6" style="text-align:center;padding:20px;color:#aaa;">Nenhuma ferramenta neste setor.</td></tr>'}</tbody>
+            </table>
+            <div class="footer">
+                <span>TSEA Energia – Sistema de Controle de Ferramentas</span>
+                <span>Responsável: __________________________ &nbsp;&nbsp; Data: __________</span>
+            </div>
+            </body></html>`;
+
+            const janela = window.open('', '_blank');
+            janela.document.write(html);
+            janela.document.close();
+        })
+        .catch(() => alert('❌ Erro ao carregar ferramentas para impressão.'));
+}
+
+function imprimirInventarioTodos() {
+    fetch(`${API_URL}/ferramentas`)
+        .then(r => r.json())
+        .then(todas => {
+            const setores = ['USINAGEM', 'MONTAGEM', 'SOLDAGEM', 'ALMOXARIFADO'];
+            const coresSetor = {
+                USINAGEM:     { cor: '#ff9900', icone: '⚙️' },
+                MONTAGEM:     { cor: '#0056b3', icone: '🔩' },
+                SOLDAGEM:     { cor: '#cc9900', icone: '🔥' },
+                ALMOXARIFADO: { cor: '#28a745', icone: '📦' }
+            };
+            const now = new Date().toLocaleString('pt-BR');
+
+            const blocos = setores.map(setor => {
+                const lista = todas.filter(f => {
+                    const s = (f.setor || f.Setor || '').toString().trim().toUpperCase();
+                    if (setor === 'ALMOXARIFADO') return s === '' || s === 'GERAL' || s === 'ALMOXARIFADO' || s === 'ALMOXERIFADO';
+                    return s === setor;
+                });
+                const cor = coresSetor[setor].cor;
+                const icone = coresSetor[setor].icone;
+                const linhas = lista.map((f, idx) => {
+                    const cod  = f.codigoBarras || f.CodigoBarras || `TSEA-${String(f.id||f.Id).padStart(3,'0')}`;
+                    const desc = f.descricao || f.Descricao || '—';
+                    const st   = (f.status || f.Status || 'DISPONIVEL').toUpperCase();
+                    const vida = f.vidaUtil !== undefined ? f.vidaUtil : (f.VidaUtil || 0);
+                    return `<tr><td>${idx+1}</td><td><b>${cod}</b></td><td>${desc}</td><td>${st}</td><td>${vida}%</td><td style="text-align:center;">☐</td></tr>`;
+                }).join('');
+                return `
+                <div class="setor-bloco" style="page-break-after: always;">
+                    <h2 style="color:${cor}; border-bottom: 3px solid ${cor}; padding-bottom: 8px; margin-bottom:10px;">${icone} ${setor}</h2>
+                    <p style="color:#666; font-size:12px; margin:0 0 12px 0;">Total: ${lista.length} ferramenta${lista.length!==1?'s':''}</p>
+                    <table>
+                        <thead><tr style="background:${cor};">
+                            <th>#</th><th>Código</th><th>Descrição</th><th>Status</th><th>Vida Útil</th><th style="text-align:center;">✔</th>
+                        </tr></thead>
+                        <tbody>${linhas || '<tr><td colspan="6" style="color:#aaa;padding:15px;text-align:center;">Nenhuma ferramenta neste setor.</td></tr>'}</tbody>
+                    </table>
+                    <div style="margin-top:20px; font-size:12px; color:#555; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:space-between;">
+                        <span>Responsável: __________________________</span>
+                        <span>Data: __________</span>
+                    </div>
+                </div>`;
+            }).join('');
+
+            const html = `<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8">
+            <title>Inventário Geral – TSEA</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 30px; color: #111; }
+                h1 { margin: 0 0 4px 0; }
+                table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
+                th { color: white; padding: 9px 10px; text-align: left; font-size: 11px; }
+                td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+                tr:nth-child(even) td { background: #fafafa; }
+                .setor-bloco { margin-bottom: 40px; }
+                @media print {
+                    button { display: none !important; }
+                    .setor-bloco { page-break-after: always; }
+                    body { padding: 15px; }
+                }
+            </style></head><body>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; border-bottom:3px solid #e60000; padding-bottom:15px;">
+                <div>
+                    <h1>📋 Inventário Geral de Armários – TSEA Energia</h1>
+                    <p style="color:#888; margin:4px 0 0 0; font-size:13px;">Gerado em: ${now} &nbsp;|&nbsp; Total geral: ${todas.length} ferramentas</p>
+                </div>
+                <button onclick="window.print()" style="background:#e60000; color:white; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">🖨️ IMPRIMIR</button>
+            </div>
+            ${blocos}
+            </body></html>`;
+
+            const janela = window.open('', '_blank');
+            janela.document.write(html);
+            janela.document.close();
+        })
+        .catch(() => alert('❌ Erro ao carregar ferramentas para impressão.'));
+}
+
+// ===================== FIM INVENTÁRIO =====================
+
+// ===================== RELATÓRIOS XLSX =====================
+
+function abrirModalRelatorio() {
+    const hoje = new Date().toISOString().split('T')[0];
+    const anoAtual = new Date().getFullYear();
+    const mesAtual = `${anoAtual}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+
+    const modal = document.createElement('div');
+    modal.id = 'modalRelatorio';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:3000;display:flex;justify-content:center;align-items:center;';
+    modal.innerHTML = `
+        <div style="background:#111;border:1px solid #333;border-radius:14px;padding:36px;width:480px;color:white;position:relative;">
+            <h2 style="margin:0 0 6px 0;color:white;">📈 Gerar <span style="color:#e60000;">Relatório</span></h2>
+            <p style="color:#666;font-size:13px;margin:0 0 28px 0;">Exporta movimentações, logs de acesso e ferramentas atrasadas para XLSX.</p>
+
+            <label style="display:block;color:#aaa;font-size:12px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Período</label>
+            <div style="display:flex;gap:10px;margin-bottom:24px;">
+                <button id="rDiario" onclick="selecionarPeriodo('DIARIO')" style="flex:1;padding:12px;border-radius:8px;border:2px solid #e60000;background:#1a0000;color:white;cursor:pointer;font-weight:bold;">📅 Diário</button>
+                <button id="rMensal" onclick="selecionarPeriodo('MENSAL')" style="flex:1;padding:12px;border-radius:8px;border:1px solid #333;background:#0a0a0a;color:#888;cursor:pointer;">📆 Mensal</button>
+                <button id="rAnual"  onclick="selecionarPeriodo('ANUAL')"  style="flex:1;padding:12px;border-radius:8px;border:1px solid #333;background:#0a0a0a;color:#888;cursor:pointer;">🗓️ Anual</button>
+            </div>
+
+            <div id="inputDiario" style="margin-bottom:20px;">
+                <label style="display:block;color:#aaa;font-size:12px;margin-bottom:6px;">Data</label>
+                <input type="date" id="dataDiario" value="${hoje}" style="width:100%;background:#000;border:1px solid #444;color:white;padding:10px;border-radius:6px;box-sizing:border-box;">
+            </div>
+            <div id="inputMensal" style="display:none;margin-bottom:20px;">
+                <label style="display:block;color:#aaa;font-size:12px;margin-bottom:6px;">Mês/Ano</label>
+                <input type="month" id="dataMensal" value="${mesAtual}" style="width:100%;background:#000;border:1px solid #444;color:white;padding:10px;border-radius:6px;box-sizing:border-box;">
+            </div>
+            <div id="inputAnual" style="display:none;margin-bottom:20px;">
+                <label style="display:block;color:#aaa;font-size:12px;margin-bottom:6px;">Ano</label>
+                <input type="number" id="dataAnual" value="${anoAtual}" min="2020" max="2099" style="width:100%;background:#000;border:1px solid #444;color:white;padding:10px;border-radius:6px;box-sizing:border-box;">
+            </div>
+
+            <div id="relatorioStatus" style="min-height:18px;margin-bottom:16px;font-size:13px;color:#888;"></div>
+
+            <div style="display:flex;gap:10px;">
+                <button onclick="gerarRelatorioXLSX()" style="flex:2;background:#e60000;color:white;border:none;padding:14px;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">⬇️ BAIXAR XLSX</button>
+                <button onclick="document.getElementById('modalRelatorio').remove()" style="flex:1;background:#222;color:#aaa;border:1px solid #333;padding:14px;border-radius:8px;cursor:pointer;">FECHAR</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    window._periodoRelatorio = 'DIARIO';
+}
+
+function selecionarPeriodo(periodo) {
+    window._periodoRelatorio = periodo;
+    const periodos = ['DIARIO','MENSAL','ANUAL'];
+    periodos.forEach(p => {
+        const btnId = 'r' + p.charAt(0) + p.slice(1).toLowerCase();
+        const btn = document.getElementById(btnId);
+        const div = document.getElementById('input' + p.charAt(0) + p.slice(1).toLowerCase());
+        if (btn) {
+            if (p === periodo) {
+                btn.style.border = '2px solid #e60000';
+                btn.style.background = '#1a0000';
+                btn.style.color = 'white';
+            } else {
+                btn.style.border = '1px solid #333';
+                btn.style.background = '#0a0a0a';
+                btn.style.color = '#888';
+            }
+        }
+        if (div) div.style.display = p === periodo ? 'block' : 'none';
+    });
+}
+
+async function gerarRelatorioXLSX() {
+    const status = document.getElementById('relatorioStatus');
+    status.textContent = '⏳ Buscando dados...';
+    status.style.color = '#ffcc00';
+
+    const periodo = window._periodoRelatorio || 'DIARIO';
+    let dataParam = '';
+
+    if (periodo === 'DIARIO') {
+        dataParam = document.getElementById('dataDiario')?.value || '';
+    } else if (periodo === 'MENSAL') {
+        const mes = document.getElementById('dataMensal')?.value || '';
+        dataParam = mes ? mes + '-01' : '';
+    } else if (periodo === 'ANUAL') {
+        const ano = document.getElementById('dataAnual')?.value || new Date().getFullYear();
+        dataParam = ano + '-01-01';
+    }
+
+    try {
+        const url = `${API_URL}/relatorio/xlsx?tipo=${periodo}${dataParam ? '&dataInicio=' + dataParam : ''}`;
+        status.textContent = '📊 Gerando planilha formatada...';
+        status.style.color = '#ffcc00';
+
+        const res = await fetch(url);
+        if (!res.ok) {
+            const t = await res.text();
+            status.textContent = '❌ Erro: ' + t;
+            status.style.color = 'red';
+            return;
+        }
+
+        const blob = await res.blob();
+        const contentDisposition = res.headers.get('Content-Disposition') || '';
+        const nomeMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+        const labelPeriodo = {DIARIO:'Diário',MENSAL:'Mensal',ANUAL:'Anual'}[periodo];
+        const sufixo = dataParam.replace(/-/g,'') || new Date().toISOString().slice(0,10).replace(/-/g,'');
+        const nomeArq = nomeMatch ? nomeMatch[1] : `TSEA_Relatorio_${labelPeriodo}_${sufixo}.xlsx`;
+
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = nomeArq;
+        a.click();
+        URL.revokeObjectURL(a.href);
+
+        status.textContent = '✅ Relatório gerado com sucesso!';
+        status.style.color = '#00cc44';
+
+    } catch (err) {
+        console.error('Erro ao gerar relatório:', err);
+        status.textContent = '❌ Erro ao gerar o relatório. Verifique o console.';
+        status.style.color = 'red';
+    }
+}
+
+// ===================== FIM RELATÓRIOS =====================
 
     mostrarLogin();
 </script>

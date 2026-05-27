@@ -74,3 +74,11 @@ C:\Projetos\TSEA_SISTEMA_COMPLETO\Backend\bin\Debug\net10.0\runtimes\osx-arm64\n
 C:\Projetos\TSEA_SISTEMA_COMPLETO\Backend\bin\Debug\net10.0\runtimes\osx-x64\native\libSystem.IO.Ports.Native.dylib
 C:\Projetos\TSEA_SISTEMA_COMPLETO\Backend\bin\Debug\net10.0\runtimes\unix\lib\net10.0\System.IO.Ports.dll
 C:\Projetos\TSEA_SISTEMA_COMPLETO\Backend\bin\Debug\net10.0\runtimes\win\lib\net10.0\System.IO.Ports.dll
+C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\EPPlus.dll
+C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\EPPlus.Interfaces.dll
+C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\EPPlus.System.Drawing.dll
+C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\Microsoft.IO.RecyclableMemoryStream.dll
+C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\Microsoft.Win32.SystemEvents.dll
+C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\System.Drawing.Common.dll
+C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\runtimes\win\lib\net7.0\Microsoft.Win32.SystemEvents.dll
+C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\runtimes\win\lib\net7.0\System.Drawing.Common.dll

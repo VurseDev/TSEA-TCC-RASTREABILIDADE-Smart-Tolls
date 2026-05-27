@@ -6,6 +6,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Net.Mail;
 using System.Security.Cryptography;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
 
 // --- CONFIGURAÇÃO DO BUILDER ---
 var builder = WebApplication.CreateBuilder(args);
@@ -557,6 +559,414 @@ app.MapPost("/avisos/{id:int}/lido", (int id) =>
     aviso.Lido = true;
     return Results.Ok(new { mensagem = "Aviso marcado como lido." });
 });
+
+// --- ENDPOINT DE RELATÓRIO (JSON) ---
+app.MapGet("/relatorio", async (string tipo, string? dataInicio, string? dateFim, AppDbContext db) =>
+{
+    var (inicio, fim, erro) = ResolverPeriodo(tipo, dataInicio);
+    if (erro != null) return Results.BadRequest(new { erro });
+
+    var (movComDetalhes, logsComDetalhes, ferramentasAtrasadas, resumo, resumoFerramentas) =
+        await ColetarDadosRelatorio(db, inicio, fim);
+
+    return Results.Ok(new {
+        Periodo = tipo.ToUpper(),
+        DataInicio = inicio,
+        DataFim = fim,
+        GeradoEm = DateTime.Now,
+        Resumo = resumo,
+        Movimentacoes = movComDetalhes,
+        LogsAcesso = logsComDetalhes,
+        FerramentasAtrasadas = ferramentasAtrasadas,
+        ResumoFerramentas = resumoFerramentas
+    });
+});
+
+// --- ENDPOINT DE RELATÓRIO XLSX FORMATADO ---
+app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbContext db) =>
+{
+    var (inicio, fim, erro) = ResolverPeriodo(tipo, dataInicio);
+    if (erro != null) return Results.BadRequest(new { erro });
+
+    var (movs, logs, atrasadas, resumo, resumoFerr) =
+        await ColetarDadosRelatorio(db, inicio, fim);
+
+    ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+    using var pkg = new ExcelPackage();
+
+    // ── Cores da marca TSEA ──
+    var vermelho    = System.Drawing.Color.FromArgb(0xCC, 0x00, 0x00);
+    var vermelhoClaro = System.Drawing.Color.FromArgb(0xFF, 0xE5, 0xE5);
+    var cinzaHeader = System.Drawing.Color.FromArgb(0x1A, 0x1A, 0x1A);
+    var cinzaLinha  = System.Drawing.Color.FromArgb(0xF5, 0xF5, 0xF5);
+    var verdeStatus = System.Drawing.Color.FromArgb(0x00, 0x80, 0x00);
+    var laranjaStatus = System.Drawing.Color.FromArgb(0xFF, 0x88, 0x00);
+    var brancoFonte = System.Drawing.Color.White;
+    var pretoFonte  = System.Drawing.Color.FromArgb(0x22, 0x22, 0x22);
+    var labelPeriodo = tipo.ToUpper() switch {
+        "DIARIO" => "DIÁRIO", "MENSAL" => "MENSAL", "ANUAL" => "ANUAL", _ => tipo.ToUpper()
+    };
+
+    // ╔══════════════════════════════╗
+    // ║  ABA 1 — RESUMO              ║
+    // ╚══════════════════════════════╝
+    var wsR = pkg.Workbook.Worksheets.Add("📊 Resumo");
+    wsR.View.ShowGridLines = false;
+    wsR.Column(1).Width = 36;
+    wsR.Column(2).Width = 22;
+    wsR.Column(3).Width = 22;
+
+    // Título principal
+    wsR.Cells["A1:C1"].Merge = true;
+    wsR.Cells["A1"].Value = $"TSEA ENERGIA  –  RELATÓRIO {labelPeriodo}";
+    wsR.Cells["A1"].Style.Font.Name = "Arial";
+    wsR.Cells["A1"].Style.Font.Size = 18;
+    wsR.Cells["A1"].Style.Font.Bold = true;
+    wsR.Cells["A1"].Style.Font.Color.SetColor(brancoFonte);
+    wsR.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+    wsR.Cells["A1"].Style.Fill.BackgroundColor.SetColor(vermelho);
+    wsR.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+    wsR.Cells["A1"].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+    wsR.Row(1).Height = 42;
+
+    // Linha de período/geração
+    wsR.Cells["A2"].Value = "Período:";
+    wsR.Cells["B2"].Value = $"{inicio:dd/MM/yyyy}  →  {fim:dd/MM/yyyy}";
+    wsR.Cells["B2:C2"].Merge = true;
+    wsR.Cells["A3"].Value = "Gerado em:";
+    wsR.Cells["B3"].Value = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+    wsR.Cells["B3:C3"].Merge = true;
+    foreach (var addr in new[]{"A2","A3"}) {
+        wsR.Cells[addr].Style.Font.Bold = true;
+        wsR.Cells[addr].Style.Font.Color.SetColor(pretoFonte);
+    }
+    foreach (var addr in new[]{"B2","B3"}) {
+        wsR.Cells[addr].Style.Font.Color.SetColor(pretoFonte);
+    }
+    wsR.Row(2).Height = 18; wsR.Row(3).Height = 18;
+
+    // Função local para seção título
+    void SecaoTitulo(ExcelWorksheet ws, int row, string titulo, System.Drawing.Color cor, int colMax = 3) {
+        var merge = $"A{row}:{(char)('A'+colMax-1)}{row}";
+        ws.Cells[merge].Merge = true;
+        ws.Cells[$"A{row}"].Value = titulo;
+        ws.Cells[$"A{row}"].Style.Font.Bold = true;
+        ws.Cells[$"A{row}"].Style.Font.Size = 11;
+        ws.Cells[$"A{row}"].Style.Font.Color.SetColor(brancoFonte);
+        ws.Cells[$"A{row}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        ws.Cells[$"A{row}"].Style.Fill.BackgroundColor.SetColor(cor);
+        ws.Cells[$"A{row}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Left;
+        ws.Cells[$"A{row}"].Style.Indent = 1;
+        ws.Row(row).Height = 22;
+    }
+
+    // Função local para linha de dado
+    void LinhaKV(ExcelWorksheet ws, int row, string label, object valor, System.Drawing.Color? bgColor = null) {
+        ws.Cells[$"A{row}"].Value = label;
+        ws.Cells[$"B{row}"].Value = valor;
+        ws.Cells[$"B{row}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        ws.Cells[$"B{row}"].Style.Font.Bold = true;
+        ws.Cells[$"B{row}"].Style.Font.Size = 12;
+        if (bgColor.HasValue) {
+            foreach (var c in new[]{ $"A{row}", $"B{row}", $"C{row}" }) {
+                ws.Cells[c].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                ws.Cells[c].Style.Fill.BackgroundColor.SetColor(bgColor.Value);
+            }
+        }
+        ws.Row(row).Height = 20;
+    }
+
+    SecaoTitulo(wsR, 5, "  MOVIMENTAÇÕES", System.Drawing.Color.FromArgb(0x33, 0x33, 0x33));
+    LinhaKV(wsR, 6,  "  Total de movimentações",        resumo.TotalMovimentacoes);
+    LinhaKV(wsR, 7,  "  Devolvidas manualmente",        resumo.Devolvidas,        System.Drawing.Color.FromArgb(0xE8, 0xF5, 0xE9));
+    LinhaKV(wsR, 8,  "  Em aberto (não devolvidas)",    resumo.EmAberto,          resumo.EmAberto > 0 ? vermelhoClaro : (System.Drawing.Color?)null);
+    LinhaKV(wsR, 9,  "  Ferramentas atrasadas (agora)", resumo.FerramentasAtrasadas, resumo.FerramentasAtrasadas > 0 ? vermelhoClaro : (System.Drawing.Color?)null);
+    LinhaKV(wsR, 10, "  Usuários únicos no período",    resumo.UsuariosUnicos);
+    LinhaKV(wsR, 11, "  Total de logs de acesso",       resumo.TotalLogsAcesso);
+
+    SecaoTitulo(wsR, 13, "  FERRAMENTAS – SITUAÇÃO ATUAL", System.Drawing.Color.FromArgb(0x33, 0x33, 0x33));
+    LinhaKV(wsR, 14, "  Total cadastradas",  resumoFerr.Total);
+    LinhaKV(wsR, 15, "  Disponíveis",        resumoFerr.Disponiveis,  System.Drawing.Color.FromArgb(0xE8, 0xF5, 0xE9));
+    LinhaKV(wsR, 16, "  Em uso",             resumoFerr.EmUso,        System.Drawing.Color.FromArgb(0xFF, 0xF3, 0xE0));
+    LinhaKV(wsR, 17, "  Em manutenção",      resumoFerr.Manutencao,   resumoFerr.Manutencao > 0 ? vermelhoClaro : (System.Drawing.Color?)null);
+
+    // Bordas finas em todo o bloco de dados
+    foreach (var rng in new[]{ wsR.Cells["A6:C11"], wsR.Cells["A14:C17"] }) {
+        rng.Style.Border.Top.Style    = ExcelBorderStyle.Thin;
+        rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+        rng.Style.Border.Left.Style   = ExcelBorderStyle.Thin;
+        rng.Style.Border.Right.Style  = ExcelBorderStyle.Thin;
+    }
+
+    // Função para criar cabeçalho de tabela
+    void CabecalhoTabela(ExcelWorksheet ws, int row, string[] cols) {
+        for (int i = 0; i < cols.Length; i++) {
+            ws.Cells[row, i+1].Value = cols[i];
+            ws.Cells[row, i+1].Style.Font.Bold = true;
+            ws.Cells[row, i+1].Style.Font.Color.SetColor(brancoFonte);
+            ws.Cells[row, i+1].Style.Fill.PatternType = ExcelFillStyle.Solid;
+            ws.Cells[row, i+1].Style.Fill.BackgroundColor.SetColor(vermelho);
+            ws.Cells[row, i+1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            ws.Cells[row, i+1].Style.Border.Top.Style    = ExcelBorderStyle.Thin;
+            ws.Cells[row, i+1].Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            ws.Cells[row, i+1].Style.Border.Left.Style   = ExcelBorderStyle.Thin;
+            ws.Cells[row, i+1].Style.Border.Right.Style  = ExcelBorderStyle.Thin;
+        }
+        ws.Row(row).Height = 24;
+    }
+
+    // Função para aplicar zebra + bordas nas linhas de dados
+    void FormatarLinhas(ExcelWorksheet ws, int rowStart, int rowEnd, int colCount, bool comStatus = false, int statusCol = 0) {
+        for (int r = rowStart; r <= rowEnd; r++) {
+            var bg = (r - rowStart) % 2 == 0 ? cinzaLinha : System.Drawing.Color.White;
+            for (int c = 1; c <= colCount; c++) {
+                var cell = ws.Cells[r, c];
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(bg);
+                cell.Style.Border.Top.Style    = ExcelBorderStyle.Thin;
+                cell.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                cell.Style.Border.Left.Style   = ExcelBorderStyle.Thin;
+                cell.Style.Border.Right.Style  = ExcelBorderStyle.Thin;
+                cell.Style.Font.Color.SetColor(pretoFonte);
+                cell.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+            }
+            ws.Row(r).Height = 18;
+        }
+    }
+
+    // ╔══════════════════════════════╗
+    // ║  ABA 2 — MOVIMENTAÇÕES       ║
+    // ╚══════════════════════════════╝
+    var wsMov = pkg.Workbook.Worksheets.Add("🔄 Movimentações");
+    wsMov.View.ShowGridLines = false;
+    wsMov.Row(1).Height = 42;
+    wsMov.Cells["A1:J1"].Merge = true;
+    wsMov.Cells["A1"].Value = $"TSEA ENERGIA  –  MOVIMENTAÇÕES  |  {labelPeriodo}  |  {inicio:dd/MM/yyyy} a {fim:dd/MM/yyyy}";
+    wsMov.Cells["A1"].Style.Font.Bold = true; wsMov.Cells["A1"].Style.Font.Size = 14;
+    wsMov.Cells["A1"].Style.Font.Color.SetColor(brancoFonte);
+    wsMov.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+    wsMov.Cells["A1"].Style.Fill.BackgroundColor.SetColor(vermelho);
+    wsMov.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+    wsMov.Cells["A1"].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+
+    var movCols = new[]{"#","Ferramenta","Código Barras","Setor","Colaborador","Data Retirada","Data Devolução","Duração (min)","Devolvida?","Status"};
+    var movWidths = new double[]{5,30,16,14,22,20,20,14,14,14};
+    CabecalhoTabela(wsMov, 2, movCols);
+    for (int i=0;i<movWidths.Length;i++) wsMov.Column(i+1).Width = movWidths[i];
+
+    int movRow = 3;
+    foreach (var m in movs) {
+        wsMov.Cells[movRow,1].Value  = movRow - 2;
+        wsMov.Cells[movRow,2].Value  = m.Ferramenta;
+        wsMov.Cells[movRow,3].Value  = m.CodigoBarras;
+        wsMov.Cells[movRow,4].Value  = m.Setor;
+        wsMov.Cells[movRow,5].Value  = m.Colaborador;
+        wsMov.Cells[movRow,6].Value  = m.DataRetirada.ToString("dd/MM/yyyy HH:mm");
+        wsMov.Cells[movRow,7].Value = (m.DataDevolucao != null) ? ((DateTime)m.DataDevolucao).ToString("dd/MM/yyyy HH:mm") : "—";
+        wsMov.Cells[movRow,8].Value  = m.DuracaoMinutos;
+        wsMov.Cells[movRow,9].Value  = m.DevolvidaManualmente ? "SIM" : "NÃO";
+        wsMov.Cells[movRow,10].Value = m.Status;
+        movRow++;
+    }
+    FormatarLinhas(wsMov, 3, movRow-1, 10);
+    // Colorir coluna Status
+    for (int r = 3; r < movRow; r++) {
+        var statusVal = wsMov.Cells[r,10].Value?.ToString() ?? "";
+        var cor = statusVal == "DEVOLVIDA" ? System.Drawing.Color.FromArgb(0xE8,0xF5,0xE9) : vermelhoClaro;
+        wsMov.Cells[r,10].Style.Fill.BackgroundColor.SetColor(cor);
+        wsMov.Cells[r,9].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        wsMov.Cells[r,10].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        wsMov.Cells[r,1].Style.HorizontalAlignment  = ExcelHorizontalAlignment.Center;
+        wsMov.Cells[r,8].Style.HorizontalAlignment  = ExcelHorizontalAlignment.Center;
+    }
+
+    // ╔══════════════════════════════╗
+    // ║  ABA 3 — LOGS DE ACESSO      ║
+    // ╚══════════════════════════════╝
+    var wsLog = pkg.Workbook.Worksheets.Add("🔐 Logs de Acesso");
+    wsLog.View.ShowGridLines = false;
+    wsLog.Row(1).Height = 42;
+    wsLog.Cells["A1:H1"].Merge = true;
+    wsLog.Cells["A1"].Value = $"TSEA ENERGIA  –  LOGS DE ACESSO  |  {labelPeriodo}  |  {inicio:dd/MM/yyyy} a {fim:dd/MM/yyyy}";
+    wsLog.Cells["A1"].Style.Font.Bold = true; wsLog.Cells["A1"].Style.Font.Size = 14;
+    wsLog.Cells["A1"].Style.Font.Color.SetColor(brancoFonte);
+    wsLog.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+    wsLog.Cells["A1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(0x1A,0x1A,0x1A));
+    wsLog.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+    wsLog.Cells["A1"].Style.VerticalAlignment   = ExcelVerticalAlignment.Center;
+
+    var logCols = new[]{"#","Colaborador","Crachá","Data Entrada","Data Saída","Duração (min)","Motivo Saída","Status"};
+    var logWidths = new double[]{5,26,14,20,20,14,20,14};
+    CabecalhoTabela(wsLog, 2, logCols);
+    for (int i=0;i<logWidths.Length;i++) wsLog.Column(i+1).Width = logWidths[i];
+
+    int logRow = 3;
+    foreach (var l in logs) {
+        wsLog.Cells[logRow,1].Value = logRow - 2;
+        wsLog.Cells[logRow,2].Value = l.Colaborador;
+        wsLog.Cells[logRow,3].Value = l.UsuarioId;
+        wsLog.Cells[logRow,4].Value = l.DataEntrada.ToString("dd/MM/yyyy HH:mm");
+        wsLog.Cells[logRow,5].Value = (l.DataSaida != null) ? ((DateTime)l.DataSaida).ToString("dd/MM/yyyy HH:mm") : "Ainda logado";
+        wsLog.Cells[logRow,6].Value = l.DuracaoMinutos;
+        wsLog.Cells[logRow,7].Value = l.MotivoSaida ?? "—";
+        wsLog.Cells[logRow,8].Value = l.StatusAcesso;
+        logRow++;
+    }
+    FormatarLinhas(wsLog, 3, logRow-1, 8);
+    for (int r = 3; r < logRow; r++) {
+        wsLog.Cells[r,1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        wsLog.Cells[r,6].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        wsLog.Cells[r,8].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+    }
+
+    // ╔══════════════════════════════════╗
+    // ║  ABA 4 — FERRAMENTAS ATRASADAS   ║
+    // ╚══════════════════════════════════╝
+    var wsAt = pkg.Workbook.Worksheets.Add("⚠️ Atrasadas");
+    wsAt.View.ShowGridLines = false;
+    wsAt.Row(1).Height = 42;
+    wsAt.Cells["A1:F1"].Merge = true;
+    wsAt.Cells["A1"].Value = $"TSEA ENERGIA  –  FERRAMENTAS ATRASADAS  |  Gerado em {DateTime.Now:dd/MM/yyyy HH:mm}";
+    wsAt.Cells["A1"].Style.Font.Bold = true; wsAt.Cells["A1"].Style.Font.Size = 14;
+    wsAt.Cells["A1"].Style.Font.Color.SetColor(brancoFonte);
+    wsAt.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+    wsAt.Cells["A1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(0x99,0x00,0x00));
+    wsAt.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+    wsAt.Cells["A1"].Style.VerticalAlignment   = ExcelVerticalAlignment.Center;
+
+    var atCols = new[]{"#","Descrição","Código Barras","Setor","Colaborador","Status"};
+    var atWidths = new double[]{5,30,16,14,24,14};
+    CabecalhoTabela(wsAt, 2, atCols);
+    for (int i=0;i<atWidths.Length;i++) wsAt.Column(i+1).Width = atWidths[i];
+
+    int atRow = 3;
+    foreach (var f in atrasadas) {
+        wsAt.Cells[atRow,1].Value = atRow - 2;
+        wsAt.Cells[atRow,2].Value = f.Descricao;
+        wsAt.Cells[atRow,3].Value = f.CodigoBarras ?? $"TSEA-{f.Id:D3}";
+        wsAt.Cells[atRow,4].Value = f.Setor;
+        wsAt.Cells[atRow,5].Value = f.Colaborador ?? "—";
+        wsAt.Cells[atRow,6].Value = f.Status;
+        atRow++;
+    }
+    FormatarLinhas(wsAt, 3, atRow-1, 6);
+    for (int r = 3; r < atRow; r++) {
+        wsAt.Cells[r,1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        wsAt.Cells[r,6].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        // Todas as linhas de atrasadas com fundo vermelho claro na coluna status
+        wsAt.Cells[r,6].Style.Fill.BackgroundColor.SetColor(vermelhoClaro);
+        wsAt.Cells[r,6].Style.Font.Color.SetColor(System.Drawing.Color.FromArgb(0xCC,0x00,0x00));
+        wsAt.Cells[r,6].Style.Font.Bold = true;
+    }
+
+    var bytes = pkg.GetAsByteArray();
+    var nomeArq = $"TSEA_Relatorio_{labelPeriodo}_{inicio:yyyyMMdd}.xlsx";
+    return Results.File(bytes,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        nomeArq);
+});
+
+// --- HELPERS RELATÓRIO ---
+static (DateTime inicio, DateTime fim, string? erro) ResolverPeriodo(string tipo, string? dataInicio)
+{
+    var hoje = DateTime.Today;
+    DateTime inicio, fim;
+    switch (tipo?.ToUpper())
+    {
+        case "DIARIO":
+            inicio = string.IsNullOrWhiteSpace(dataInicio) ? hoje : DateTime.Parse(dataInicio);
+            fim = inicio.AddDays(1).AddSeconds(-1);
+            break;
+        case "MENSAL":
+            if (!string.IsNullOrWhiteSpace(dataInicio) && DateTime.TryParse(dataInicio, out var mRef))
+            { inicio = new DateTime(mRef.Year, mRef.Month, 1); fim = inicio.AddMonths(1).AddSeconds(-1); }
+            else
+            { inicio = new DateTime(hoje.Year, hoje.Month, 1); fim = inicio.AddMonths(1).AddSeconds(-1); }
+            break;
+        case "ANUAL":
+            var ano = string.IsNullOrWhiteSpace(dataInicio) ? hoje.Year : DateTime.Parse(dataInicio).Year;
+            inicio = new DateTime(ano, 1, 1); fim = new DateTime(ano, 12, 31, 23, 59, 59);
+            break;
+        default:
+            return (DateTime.MinValue, DateTime.MinValue, "Tipo inválido. Use: DIARIO, MENSAL ou ANUAL.");
+    }
+    return (inicio, fim, null);
+}
+
+static async Task<(
+    List<dynamic> movs,
+    List<dynamic> logs,
+    List<dynamic> atrasadas,
+    dynamic resumo,
+    dynamic resumoFerr
+)> ColetarDadosRelatorio(AppDbContext db, DateTime inicio, DateTime fim)
+{
+    var movimentacoes = await db.Movimentacoes
+        .Where(m => m.DataRetirada >= inicio && m.DataRetirada <= fim).ToListAsync();
+    var ferramentas = await db.Ferramentas.AsNoTracking().ToListAsync();
+    var usuarios    = await db.Usuarios.AsNoTracking().ToListAsync();
+    var logsAcesso  = await db.LogsAcesso
+        .Where(l => l.DataEntrada >= inicio && l.DataEntrada <= fim).ToListAsync();
+
+    var atrasadas = ferramentas
+        .Where(f => f.Status == "EM_USO" || f.Status == "ATRASADO")
+        .Select(f => (dynamic)new {
+            f.Id, f.Descricao, f.CodigoBarras, f.Setor, f.Status, f.Colaborador
+        }).ToList();
+
+    var movs = movimentacoes.Select(m => {
+        var ferr = ferramentas.FirstOrDefault(f => f.Id == m.FerramentaId);
+        var user = usuarios.FirstOrDefault(u => u.CodigoBarras == m.UsuarioId);
+        var dur  = m.DataDevolucao.HasValue
+            ? (m.DataDevolucao.Value - m.DataRetirada).TotalMinutes
+            : (DateTime.Now - m.DataRetirada).TotalMinutes;
+        return (dynamic)new {
+            m.Id,
+            Ferramenta = ferr?.Descricao ?? "Desconhecida",
+            CodigoBarras = ferr?.CodigoBarras ?? $"TSEA-{m.FerramentaId:D3}",
+            Setor = ferr?.Setor ?? "—",
+            Colaborador = user?.Nome ?? m.UsuarioId,
+            m.DataRetirada,
+            DataDevolucao = m.DataDevolucao,
+            DevolvidaManualmente = m.DataDevolucao.HasValue,
+            DuracaoMinutos = Math.Round(dur, 1),
+            Status = m.DataDevolucao.HasValue ? "DEVOLVIDA" : "EM ABERTO"
+        };
+    }).ToList();
+
+    var logs = logsAcesso.Select(l => {
+        var user = usuarios.FirstOrDefault(u => u.CodigoBarras == l.UsuarioId);
+        return (dynamic)new {
+            l.Id,
+            Colaborador = user?.Nome ?? l.UsuarioId,
+            l.UsuarioId,
+            l.DataEntrada,
+            DataSaida = l.DataSaida,
+            DuracaoMinutos = l.DataSaida.HasValue
+                ? Math.Round((l.DataSaida.Value - l.DataEntrada).TotalMinutes, 1)
+                : Math.Round((DateTime.Now - l.DataEntrada).TotalMinutes, 1),
+            MotivoSaida = l.MotivoSaida,
+            l.StatusAcesso
+        };
+    }).ToList();
+
+    dynamic resumo = new {
+        TotalMovimentacoes  = movimentacoes.Count,
+        Devolvidas          = movimentacoes.Count(m => m.DataDevolucao.HasValue),
+        EmAberto            = movimentacoes.Count(m => !m.DataDevolucao.HasValue),
+        FerramentasAtrasadas = atrasadas.Count,
+        TotalLogsAcesso     = logsAcesso.Count,
+        UsuariosUnicos      = movimentacoes.Select(m => m.UsuarioId).Distinct().Count()
+    };
+    dynamic resumoFerr = new {
+        Total       = ferramentas.Count,
+        Disponiveis = ferramentas.Count(f => f.Status == "DISPONIVEL"),
+        EmUso       = ferramentas.Count(f => f.Status == "EM_USO"),
+        Manutencao  = ferramentas.Count(f => f.Status == "MANUTENCAO")
+    };
+
+    return (movs, logs, atrasadas, resumo, resumoFerr);
+}
 
 app.Run();
 
