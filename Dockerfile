@@ -2,8 +2,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
 WORKDIR /src
 
-# Copy project files
-COPY Backend/Backend.csproj Backend/
+# Copy project files and source code
+COPY Backend Backend/
 COPY Frontend Frontend/
 COPY Database Database/
 
