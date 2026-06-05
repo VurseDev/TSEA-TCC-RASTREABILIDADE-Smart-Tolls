@@ -82,3 +82,15 @@ C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\Microsoft.Win32.Syst
 C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\System.Drawing.Common.dll
 C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\runtimes\win\lib\net7.0\Microsoft.Win32.SystemEvents.dll
 C:\Projetos\TSEA_SISTEMA_COMPLETO\backend\bin\Debug\net10.0\runtimes\win\lib\net7.0\System.Drawing.Common.dll
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.csproj.AssemblyReference.cache
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\rpswa.dswa.cache.json
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.AssemblyInfoInputs.cache
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.AssemblyInfo.cs
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.csproj.CoreCompileInputs.cache
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.MvcApplicationPartsAssemblyInfo.cs
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.sourcelink.json
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.dll
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\refint\Backend.dll
+C:\Users\ocaua\OneDrive\Desktop\tcc\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\Backend\obj\Debug\net10.0\Backend.pdb
