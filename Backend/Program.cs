@@ -121,7 +121,7 @@ static async Task<bool> SendEmailAsync(SmtpSettings settings, string toEmail, st
 }
 
 // --- FUNCTION TO SEND ARDUINO COMMANDS ---
-void EnviarComandoArduino(string comando)
+static void EnviarComandoArduino(string comando)
 {
     try
     {
