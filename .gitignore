@@ -1,0 +1,5 @@
+**/bin/
+**/obj/
+*.log
+ArduinoBridgeWorker/appsettings.json
+publish_main_vursedev/

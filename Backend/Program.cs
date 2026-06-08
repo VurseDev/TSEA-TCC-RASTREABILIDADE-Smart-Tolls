@@ -1,5 +1,4 @@
-﻿using System.IO.Ports;
-using Microsoft.AspNetCore.StaticFiles;
+﻿using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using System.ComponentModel.DataAnnotations;
@@ -32,179 +31,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Armazena tokens temporários de reset de senha
 var resetTokens = new Dictionary<string, (string Barcode, DateTime Expiry)>();
 
-//  INICIALIZA A PORTA SERIAL GLOBAL
-ArduinoSerial.Inicializar();
-
 var app = builder.Build();
 app.UseCors("AllowAll");
-// ─── THREAD DE LEITURA SERIAL CONTÍNUA ───────────────────
-var notificacoesPendentes = new List<AvisoPendente>();
-var proximoAvisoId = 1;
-
-var mapeamentoSensores = new Dictionary<string, int>
-{
-    { "FERRAMENTA_1", 1 },
-    { "FERRAMENTA_2", 2 },
-    { "FERRAMENTA_3", 3 },
-    { "FERRAMENTA_4", 4 }
-};
-
-_ = Task.Run(async () =>
-{
-    while (true)
-    {
-        try
-        {
-            if (ArduinoSerial.Porta != null && ArduinoSerial.Porta.IsOpen && ArduinoSerial.Porta.BytesToRead > 0)
-            {
-                string resposta = ArduinoSerial.Porta.ReadLine().Trim();
-                Console.WriteLine($"[Arduino] Recebido: {resposta}");
-
-                if (resposta == "BOTAO_SAIDA_OK")
-                {
-                    BotaoControle.ConfirmadoSaida = true;
-                    continue;
-                }
-
-                // Sensor Magnético - Pino 13
-                if (resposta == "PORTA_FECHADA")
-                {
-                    EstadoPorta.Status = "FECHADA";
-                    EstadoPorta.AlarmeSemLogin = false;
-                    EstadoPorta.UltimaAtualizacao = DateTime.Now;
-                    Console.WriteLine("[Porta] Estado: FECHADA");
-                    continue;
-                }
-                if (resposta == "PORTA_ABERTA")
-                {
-                    EstadoPorta.Status = "ABERTA";
-                    EstadoPorta.UltimaAtualizacao = DateTime.Now;
-                    Console.WriteLine("[Porta] Estado: ABERTA");
-                    continue;
-                }
-                if (resposta == "PORTA_SEM_LOGIN")
-                {
-                    EstadoPorta.Status = "ALERTA_SEM_LOGIN";
-                    EstadoPorta.AlarmeSemLogin = true;
-                    EstadoPorta.UltimaAtualizacao = DateTime.Now;
-                    Console.WriteLine("[ALERTA] Porta aberta sem login ativo!");
-                    continue;
-                }
-
-                foreach (var sensor in mapeamentoSensores)
-                {
-                    if (resposta == $"{sensor.Key}_RETIRADA" || resposta == $"{sensor.Key}_DEVOLVIDA")
-                    {
-                        bool retirada = resposta.EndsWith("_RETIRADA");
-
-                        using var scope = app.Services.CreateScope();
-                        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-                        var ferramenta = await db.Ferramentas.FindAsync(sensor.Value);
-                        if (ferramenta != null)
-                        {
-                            if (retirada)
-                            {
-                                // Verifica se havia colaborador registrado (bipe no sistema)
-                                bool semRegistro = string.IsNullOrEmpty(ferramenta.Colaborador)
-                                                  && ferramenta.Status != "EM_USO";
-
-                                if (semRegistro)
-                                {
-                                    // Ferramenta saiu do armário sem nenhum bipe — gera alerta
-                                    ferramenta.Status = "AUSENTE_SEM_REGISTRO";
-                                    await db.SaveChangesAsync();
-
-                                    var codigoFerramenta = !string.IsNullOrWhiteSpace(ferramenta.CodigoBarras)
-                                        ? ferramenta.CodigoBarras
-                                        : $"TSEA-{ferramenta.Id:D3}";
-
-                                    // Busca o último operador com sessão ativa (DataSaida == null)
-                                    var sessaoAtiva = await db.LogsAcesso
-                                        .Where(l => l.DataSaida == null)
-                                        .OrderByDescending(l => l.DataEntrada)
-                                        .FirstOrDefaultAsync();
-
-                                    var operadorSuspeito = sessaoAtiva != null
-                                        ? await db.Usuarios.FirstOrDefaultAsync(u => u.CodigoBarras == sessaoAtiva.UsuarioId)
-                                        : null;
-
-                                    var operadorId    = operadorSuspeito?.CodigoBarras ?? "";
-                                    var operadorNome  = operadorSuspeito?.Nome ?? "DESCONHECIDO";
-
-                                    // Gera aviso DIRETO no operador com sessão ativa
-                                    if (!string.IsNullOrEmpty(operadorId))
-                                    {
-                                        notificacoesPendentes.Add(new AvisoPendente
-                                        {
-                                            Id           = proximoAvisoId++,
-                                            FerramentaId = ferramenta.Id,
-                                            UsuarioId    = operadorId,
-                                            Mensagem     = $"CONFIRMAR_RETIRADA|{codigoFerramenta}|{ferramenta.Descricao}",
-                                            Lido         = false,
-                                            CriadoEm    = DateTime.UtcNow
-                                        });
-                                    }
-
-                                    // Também avisa os admins (para o sininho da oficina)
-                                    var admins = await db.Usuarios
-                                        .Where(u => u.Setor == "ADMIN" && u.Status == "ATIVO")
-                                        .ToListAsync();
-
-                                    foreach (var admin in admins)
-                                    {
-                                        notificacoesPendentes.Add(new AvisoPendente
-                                        {
-                                            Id           = proximoAvisoId++,
-                                            FerramentaId = ferramenta.Id,
-                                            UsuarioId    = admin.CodigoBarras,
-                                            Mensagem     = $"RETIRADA_SEM_REGISTRO|{codigoFerramenta}|{ferramenta.Descricao}|{operadorId}|{operadorNome}",
-                                            Lido         = false,
-                                            CriadoEm    = DateTime.UtcNow
-                                        });
-                                    }
-
-                                    Console.WriteLine($"[ALERTA] {ferramenta.Descricao} retirada sem registro! Suspeito: {operadorNome} ({operadorId})");
-                                }
-                                else
-                                {
-                                    // Retirada normal — havia bipe e colaborador registrado
-                                    ferramenta.Status = "EM_USO";
-                                    await db.SaveChangesAsync();
-                                    Console.WriteLine($"[Sensor] {ferramenta.Descricao} → EM_USO");
-                                }
-                            }
-                            else
-                            {
-                                // Ferramenta devolvida — normaliza e cancela alertas pendentes
-                                ferramenta.Status = "DISPONIVEL";
-                                ferramenta.Colaborador = null;
-                                await db.SaveChangesAsync();
-
-                                var alertasPendentes = notificacoesPendentes
-                                    .Where(a => a.FerramentaId == ferramenta.Id && !a.Lido
-                                             && a.Mensagem.StartsWith("RETIRADA_SEM_REGISTRO"))
-                                    .ToList();
-                                foreach (var a in alertasPendentes) a.Lido = true;
-
-                                Console.WriteLine($"[Sensor] {ferramenta.Descricao} → DISPONIVEL");
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Serial Thread] {ex.Message}");
-        }
-
-        await Task.Delay(100); // verifica a cada 100ms
-    }
-});
-
-
 
 var frontendRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "Frontend"));
 if (Directory.Exists(frontendRoot))
@@ -286,27 +114,6 @@ static async Task<bool> SendEmailAsync(SmtpSettings settings, string toEmail, st
     }
 }
 
-// --- FUNCTION TO SEND ARDUINO COMMANDS ---
-static void EnviarComandoArduino(string comando)
-{
-    try
-    {
-        if (ArduinoSerial.Porta != null && ArduinoSerial.Porta.IsOpen)
-        {
-            ArduinoSerial.Porta.WriteLine(comando); 
-            Console.WriteLine($"[Serial] Comando enviado com sucesso: {comando}");
-        }
-        else
-        {
-            Console.WriteLine("[Serial Error] Porta não está aberta.");
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[Serial Error] Erro ao enviar comando: {ex.Message}");
-    }
-}
-
 // --- HELPERS RELATÓRIO (MUST BE BEFORE ENDPOINT MAPPINGS) ---
 static (DateTime inicio, DateTime fim, string? erro) ResolverPeriodo(string tipo, string? dataInicio)
 {
@@ -331,6 +138,9 @@ static (DateTime inicio, DateTime fim, string? erro) ResolverPeriodo(string tipo
         default:
             return (DateTime.MinValue, DateTime.MinValue, "Tipo inválido. Use: DIARIO, MENSAL ou ANUAL.");
     }
+
+    inicio = inicio.Kind == DateTimeKind.Utc ? inicio : DateTime.SpecifyKind(inicio, DateTimeKind.Utc);
+    fim = fim.Kind == DateTimeKind.Utc ? fim : DateTime.SpecifyKind(fim, DateTimeKind.Utc);
     return (inicio, fim, null);
 }
 
@@ -407,6 +217,205 @@ static async Task<(
     };
 
     return (movs, logs, atrasadas, resumo, resumoFerr);
+}
+
+
+// --- HELPERS WORKER / ARDUINO ---
+var MapeamentoSensoresArduino = new Dictionary<string, int>
+{
+    { "FERRAMENTA_1", 1 },
+    { "FERRAMENTA_2", 2 },
+    { "FERRAMENTA_3", 3 },
+    { "FERRAMENTA_4", 4 }
+};
+
+static async Task EnfileirarComandoArduino(AppDbContext db, string comando)
+{
+    db.ComandosPendentes.Add(new ComandoPendente
+    {
+        Comando = comando.Trim().ToUpperInvariant(),
+        Executado = false,
+        CriadoEm = DateTime.UtcNow
+    });
+    await db.SaveChangesAsync();
+}
+
+static bool WorkerAutorizado(HttpContext http)
+{
+    var expected = Environment.GetEnvironmentVariable("WORKER_TOKEN");
+    if (string.IsNullOrWhiteSpace(expected)) return true;
+
+    var provided = http.Request.Headers["X-Worker-Token"].FirstOrDefault();
+    return !string.IsNullOrWhiteSpace(provided) && provided == expected;
+}
+
+static async Task CriarAvisoAsync(AppDbContext db, int ferramentaId, string usuarioId, string mensagem)
+{
+    if (string.IsNullOrWhiteSpace(usuarioId)) return;
+
+    db.AvisosPendentes.Add(new AvisoPendente
+    {
+        FerramentaId = ferramentaId,
+        UsuarioId = usuarioId.Trim().ToUpperInvariant(),
+        Mensagem = mensagem,
+        Lido = false,
+        CriadoEm = DateTime.UtcNow
+    });
+}
+
+static async Task MarcarAvisosRetiradaSemRegistroComoLidos(AppDbContext db, int ferramentaId)
+{
+    var alertas = await db.AvisosPendentes
+        .Where(a => a.FerramentaId == ferramentaId && !a.Lido && a.Mensagem.StartsWith("RETIRADA_SEM_REGISTRO"))
+        .ToListAsync();
+
+    foreach (var aviso in alertas)
+        aviso.Lido = true;
+}
+
+static async Task<EstadoPortaRegistro> ObterOuCriarEstadoPorta(AppDbContext db)
+{
+    var estado = await db.EstadoPorta.FirstOrDefaultAsync(e => e.Id == 1);
+    if (estado != null) return estado;
+
+    estado = new EstadoPortaRegistro
+    {
+        Id = 1,
+        Status = "DESCONHECIDO",
+        AlarmeSemLogin = false,
+        UltimaAtualizacao = DateTime.UtcNow,
+        BotaoSaidaConfirmado = false
+    };
+    db.EstadoPorta.Add(estado);
+    await db.SaveChangesAsync();
+    return estado;
+}
+
+static async Task AtualizarEstadoPorta(AppDbContext db, string status, bool? alarmeSemLogin = null, bool? botaoSaidaConfirmado = null)
+{
+    var estado = await ObterOuCriarEstadoPorta(db);
+    estado.Status = status;
+    estado.UltimaAtualizacao = DateTime.UtcNow;
+    if (alarmeSemLogin.HasValue) estado.AlarmeSemLogin = alarmeSemLogin.Value;
+    if (botaoSaidaConfirmado.HasValue) estado.BotaoSaidaConfirmado = botaoSaidaConfirmado.Value;
+    await db.SaveChangesAsync();
+}
+
+async Task ProcessarEventoArduino(string eventoOriginal, AppDbContext db)
+{
+    var resposta = (eventoOriginal ?? "").Trim().ToUpperInvariant();
+    if (string.IsNullOrWhiteSpace(resposta)) return;
+
+    Console.WriteLine($"[Worker/Arduino] Evento recebido: {resposta}");
+
+    if (resposta == "ARDUINO_PRONTO")
+        return;
+
+    if (resposta == "BOTAO_SAIDA_OK")
+    {
+        await AtualizarEstadoPorta(db, "FECHADA", alarmeSemLogin: false, botaoSaidaConfirmado: true);
+        return;
+    }
+
+    if (resposta == "PORTA_FECHADA")
+    {
+        await AtualizarEstadoPorta(db, "FECHADA", alarmeSemLogin: false);
+        return;
+    }
+
+    if (resposta == "PORTA_ABERTA")
+    {
+        await AtualizarEstadoPorta(db, "ABERTA", alarmeSemLogin: false);
+        return;
+    }
+
+    if (resposta == "PORTA_SEM_LOGIN")
+    {
+        await AtualizarEstadoPorta(db, "ALERTA_SEM_LOGIN", alarmeSemLogin: true);
+        return;
+    }
+
+    if (resposta.StartsWith("TOTAL_AUSENTES:"))
+        return;
+
+    foreach (var sensor in MapeamentoSensoresArduino)
+    {
+        if (resposta == $"{sensor.Key}_RETIRADA" || resposta == $"{sensor.Key}_DEVOLVIDA")
+        {
+            bool retirada = resposta.EndsWith("_RETIRADA");
+            var ferramenta = await db.Ferramentas.FindAsync(sensor.Value);
+            if (ferramenta == null) return;
+
+            if (retirada)
+            {
+                bool semRegistro = string.IsNullOrEmpty(ferramenta.Colaborador)
+                                   && ferramenta.Status != "EM_USO";
+
+                if (semRegistro)
+                {
+                    ferramenta.Status = "AUSENTE_SEM_REGISTRO";
+                    await db.SaveChangesAsync();
+
+                    var codigoFerramenta = !string.IsNullOrWhiteSpace(ferramenta.CodigoBarras)
+                        ? ferramenta.CodigoBarras
+                        : $"TSEA-{ferramenta.Id:D3}";
+
+                    var sessaoAtiva = await db.LogsAcesso
+                        .Where(l => l.DataSaida == null)
+                        .OrderByDescending(l => l.DataEntrada)
+                        .FirstOrDefaultAsync();
+
+                    var operadorSuspeito = sessaoAtiva != null
+                        ? await db.Usuarios.FirstOrDefaultAsync(u => u.CodigoBarras == sessaoAtiva.UsuarioId)
+                        : null;
+
+                    var operadorId = operadorSuspeito?.CodigoBarras ?? "";
+                    var operadorNome = operadorSuspeito?.Nome ?? "DESCONHECIDO";
+
+                    if (!string.IsNullOrEmpty(operadorId))
+                    {
+                        await CriarAvisoAsync(db, ferramenta.Id, operadorId,
+                            $"CONFIRMAR_RETIRADA|{codigoFerramenta}|{ferramenta.Descricao}");
+                    }
+
+                    var admins = await db.Usuarios
+                        .Where(u => u.Setor == "ADMIN" && u.Status == "ATIVO")
+                        .ToListAsync();
+
+                    foreach (var admin in admins)
+                    {
+                        await CriarAvisoAsync(db, ferramenta.Id, admin.CodigoBarras,
+                            $"RETIRADA_SEM_REGISTRO|{codigoFerramenta}|{ferramenta.Descricao}|{operadorId}|{operadorNome}");
+                    }
+
+                    await db.SaveChangesAsync();
+                    Console.WriteLine($"[ALERTA] {ferramenta.Descricao} retirada sem registro! Suspeito: {operadorNome} ({operadorId})");
+                }
+                else
+                {
+                    ferramenta.Status = "EM_USO";
+                    await db.SaveChangesAsync();
+                    Console.WriteLine($"[Sensor] {ferramenta.Descricao} → EM_USO");
+                }
+            }
+            else
+            {
+                ferramenta.Status = "DISPONIVEL";
+                ferramenta.Colaborador = null;
+
+                var mov = await db.Movimentacoes
+                    .Where(m => m.FerramentaId == ferramenta.Id && m.DataDevolucao == null)
+                    .OrderByDescending(m => m.DataRetirada)
+                    .FirstOrDefaultAsync();
+                if (mov != null) mov.DataDevolucao = DateTime.UtcNow;
+
+                await MarcarAvisosRetiradaSemRegistroComoLidos(db, ferramenta.Id);
+                await db.SaveChangesAsync();
+                Console.WriteLine($"[Sensor] {ferramenta.Descricao} → DISPONIVEL");
+            }
+            return;
+        }
+    }
 }
 
 // --- ENDPOINTS ---
@@ -774,8 +783,8 @@ app.MapPost("/login", async (LoginRequest req, AppDbContext db) =>
             return Results.Unauthorized();
     }
 
-    // Envia o comando direto para o Arduino mexer o Servo e ligar o LED Verde
-    EnviarComandoArduino("LOGIN");
+    // Na nuvem, o Fly não acessa COM7. O Worker local buscará este comando e enviará ao Arduino.
+    await EnfileirarComandoArduino(db, "LOGIN");
 
     db.LogsAcesso.Add(new LogAcesso { 
         UsuarioId = usuario.CodigoBarras, 
@@ -803,8 +812,8 @@ app.MapPost("/logout", async (LogoutRequest req, AppDbContext db) =>
     }
     await db.SaveChangesAsync();
 
-    // Notifica o Arduino que a conta deslogou para iniciar o buzzer
-    EnviarComandoArduino("LOGOUT");
+    // Na nuvem, o Fly não acessa COM7. O Worker local buscará este comando e enviará ao Arduino.
+    await EnfileirarComandoArduino(db, "LOGOUT");
 
     return Results.Ok();
 });
@@ -815,74 +824,132 @@ app.MapPost("/logout", async (LogoutRequest req, AppDbContext db) =>
 // --- AVISOS ---
 
 // Criar aviso
-app.MapPost("/avisos", (AvisoRequest req) =>
+app.MapPost("/avisos", async (AvisoRequest req, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(req.UsuarioId))
         return Results.BadRequest(new { erro = "UsuarioId é obrigatório." });
 
     var aviso = new AvisoPendente
     {
-        Id = proximoAvisoId++,
         FerramentaId = req.FerramentaId,
         UsuarioId = req.UsuarioId.Trim().ToUpperInvariant(),
         Mensagem = req.Mensagem ?? "Você recebeu um aviso do administrador.",
         Lido = false,
         CriadoEm = DateTime.UtcNow
     };
-    notificacoesPendentes.Add(aviso);
+
+    db.AvisosPendentes.Add(aviso);
+    await db.SaveChangesAsync();
     return Results.Ok(new { mensagem = "Aviso enviado com sucesso.", id = aviso.Id });
 });
 
 // Buscar avisos de um operador
-app.MapGet("/avisos/{usuarioId}", (string usuarioId) =>
+app.MapGet("/avisos/{usuarioId}", async (string usuarioId, AppDbContext db) =>
 {
     var norm = usuarioId.Trim().ToUpperInvariant();
-    var avisos = notificacoesPendentes
+    var avisos = await db.AvisosPendentes
         .Where(a => a.UsuarioId == norm && !a.Lido)
         .OrderByDescending(a => a.CriadoEm)
-        .ToList();
+        .ToListAsync();
     return Results.Ok(avisos);
 });
 
 // Marcar aviso como lido
-app.MapPost("/avisos/{id:int}/lido", (int id) =>
+app.MapPost("/avisos/{id:int}/lido", async (int id, AppDbContext db) =>
 {
-    var aviso = notificacoesPendentes.FirstOrDefault(a => a.Id == id);
+    var aviso = await db.AvisosPendentes.FirstOrDefaultAsync(a => a.Id == id);
     if (aviso == null) return Results.NotFound(new { erro = "Aviso não encontrado." });
     aviso.Lido = true;
+    await db.SaveChangesAsync();
     return Results.Ok(new { mensagem = "Aviso marcado como lido." });
 });
 
 // --- ENDPOINT STATUS DA PORTA (Sensor Magnético) ---
-app.MapGet("/status/porta", () =>
+app.MapGet("/status/porta", async (AppDbContext db) =>
 {
+    var estado = await ObterOuCriarEstadoPorta(db);
     return Results.Ok(new {
-        status = EstadoPorta.Status,
-        alarmeSemLogin = EstadoPorta.AlarmeSemLogin,
-        ultimaAtualizacao = EstadoPorta.UltimaAtualizacao.ToString("yyyy-MM-ddTHH:mm:ss")
+        status = estado.Status,
+        alarmeSemLogin = estado.AlarmeSemLogin,
+        ultimaAtualizacao = estado.UltimaAtualizacao.ToString("yyyy-MM-ddTHH:mm:ss")
     });
 });
 
-// --- ENDPOINT PARA SILENCIAR ALERTA (admin reconheceu) ---
-app.MapPost("/status/porta/silenciar", () =>
+// Compatibilidade com o frontend antigo que consulta o botão físico
+app.MapGet("/api/arduino/status-botao", async (AppDbContext db) =>
 {
-    EstadoPorta.AlarmeSemLogin = false;
-    if (EstadoPorta.Status == "ALERTA_SEM_LOGIN")
-        EstadoPorta.Status = "ABERTA";
+    var estado = await ObterOuCriarEstadoPorta(db);
+    var confirmado = estado.BotaoSaidaConfirmado;
+    if (confirmado)
+    {
+        estado.BotaoSaidaConfirmado = false;
+        await db.SaveChangesAsync();
+    }
+    return Results.Ok(new { confirmado });
+});
+
+// --- ENDPOINT PARA SILENCIAR ALERTA (admin reconheceu) ---
+app.MapPost("/status/porta/silenciar", async (AppDbContext db) =>
+{
+    var estado = await ObterOuCriarEstadoPorta(db);
+    estado.AlarmeSemLogin = false;
+    if (estado.Status == "ALERTA_SEM_LOGIN")
+        estado.Status = "ABERTA";
+    estado.UltimaAtualizacao = DateTime.UtcNow;
+    await db.SaveChangesAsync();
     return Results.Ok(new { mensagem = "Alerta silenciado." });
 });
 
-// --- ENDPOINT DE RELATÓRIO (JSON) ---
-app.MapGet("/relatorio", async (string tipo, string? dataInicio, string? dateFim, AppDbContext db) =>
+// --- ENDPOINTS DO WORKER LOCAL / ARDUINO ---
+app.MapGet("/worker/comandos", async (HttpContext http, AppDbContext db) =>
 {
-    var (inicio, fim, erro) = ResolverPeriodo(tipo, dataInicio);
+    if (!WorkerAutorizado(http)) return Results.Unauthorized();
+
+    var comando = await db.ComandosPendentes
+        .Where(c => !c.Executado)
+        .OrderBy(c => c.CriadoEm)
+        .Select(c => new { id = c.Id, comando = c.Comando })
+        .FirstOrDefaultAsync();
+
+    return Results.Ok(comando ?? new { id = 0, comando = "" });
+});
+
+app.MapPost("/worker/comandos/{id:int}/concluido", async (int id, HttpContext http, AppDbContext db) =>
+{
+    if (!WorkerAutorizado(http)) return Results.Unauthorized();
+
+    var comando = await db.ComandosPendentes.FindAsync(id);
+    if (comando == null) return Results.NotFound(new { erro = "Comando não encontrado." });
+
+    comando.Executado = true;
+    comando.ExecutadoEm = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { mensagem = "Comando marcado como executado." });
+});
+
+app.MapPost("/worker/evento", async (ArduinoEventoRequest req, HttpContext http, AppDbContext db) =>
+{
+    if (!WorkerAutorizado(http)) return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(req.Evento))
+        return Results.BadRequest(new { erro = "Evento vazio." });
+
+    await ProcessarEventoArduino(req.Evento, db);
+    return Results.Ok(new { mensagem = "Evento processado." });
+});
+
+// --- ENDPOINT DE RELATÓRIO (JSON) ---
+app.MapGet("/relatorio", async (string? tipo, string? dataInicio, string? dateFim, AppDbContext db) =>
+{
+    var tipoRelatorio = string.IsNullOrWhiteSpace(tipo) ? "DIARIO" : tipo;
+    var (inicio, fim, erro) = ResolverPeriodo(tipoRelatorio, dataInicio);
     if (erro != null) return Results.BadRequest(new { erro });
 
     var (movComDetalhes, logsComDetalhes, ferramentasAtrasadas, resumo, resumoFerramentas) =
         await ColetarDadosRelatorio(db, inicio, fim);
 
     return Results.Ok(new {
-        Periodo = tipo.ToUpper(),
+        Periodo = tipoRelatorio.ToUpper(),
         DataInicio = inicio,
         DataFim = fim,
         GeradoEm = DateTime.Now,
@@ -895,9 +962,10 @@ app.MapGet("/relatorio", async (string tipo, string? dataInicio, string? dateFim
 });
 
 // --- ENDPOINT DE RELATÓRIO XLSX FORMATADO ---
-app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbContext db) =>
+app.MapGet("/relatorio/xlsx", async (string? tipo, string? dataInicio, AppDbContext db) =>
 {
-    var (inicio, fim, erro) = ResolverPeriodo(tipo, dataInicio);
+    var tipoRelatorio = string.IsNullOrWhiteSpace(tipo) ? "DIARIO" : tipo;
+    var (inicio, fim, erro) = ResolverPeriodo(tipoRelatorio, dataInicio);
     if (erro != null) return Results.BadRequest(new { erro });
 
     var (movs, logs, atrasadas, resumo, resumoFerr) =
@@ -915,8 +983,8 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
     var laranjaStatus = System.Drawing.Color.FromArgb(0xFF, 0x88, 0x00);
     var brancoFonte = System.Drawing.Color.White;
     var pretoFonte  = System.Drawing.Color.FromArgb(0x22, 0x22, 0x22);
-    var labelPeriodo = tipo.ToUpper() switch {
-        "DIARIO" => "DIÁRIO", "MENSAL" => "MENSAL", "ANUAL" => "ANUAL", _ => tipo.ToUpper()
+    var labelPeriodo = tipoRelatorio.ToUpper() switch {
+        "DIARIO" => "DIÁRIO", "MENSAL" => "MENSAL", "ANUAL" => "ANUAL", _ => tipoRelatorio.ToUpper()
     };
 
     // 
@@ -1068,15 +1136,19 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
 
     int movRow = 3;
     foreach (var m in movs) {
+        object? dataDevolucaoObj = m.DataDevolucao;
+        DateTime? dataDevolucao = dataDevolucaoObj is DateTime dataDev ? dataDev : null;
+        bool devolvidaManualmente = dataDevolucao.HasValue;
+
         wsMov.Cells[movRow,1].Value  = movRow - 2;
         wsMov.Cells[movRow,2].Value  = m.Ferramenta;
         wsMov.Cells[movRow,3].Value  = m.CodigoBarras;
         wsMov.Cells[movRow,4].Value  = m.Setor;
         wsMov.Cells[movRow,5].Value  = m.Colaborador;
         wsMov.Cells[movRow,6].Value  = m.DataRetirada.ToString("dd/MM/yyyy HH:mm");
-        wsMov.Cells[movRow,7].Value  = m.DataDevolucao.HasValue ? m.DataDevolucao.Value.ToString("dd/MM/yyyy HH:mm") : "—";
+        wsMov.Cells[movRow,7].Value  = dataDevolucao.HasValue ? dataDevolucao.Value.ToString("dd/MM/yyyy HH:mm") : "—";
         wsMov.Cells[movRow,8].Value  = m.DuracaoMinutos;
-        wsMov.Cells[movRow,9].Value  = m.DevolvidaManualmente ? "SIM" : "NÃO";
+        wsMov.Cells[movRow,9].Value  = devolvidaManualmente ? "SIM" : "NÃO";
         wsMov.Cells[movRow,10].Value = m.Status;
         movRow++;
     }
@@ -1114,11 +1186,14 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
 
     int logRow = 3;
     foreach (var l in logs) {
+        object? dataSaidaObj = l.DataSaida;
+        DateTime? dataSaida = dataSaidaObj is DateTime saida ? saida : null;
+
         wsLog.Cells[logRow,1].Value = logRow - 2;
         wsLog.Cells[logRow,2].Value = l.Colaborador;
         wsLog.Cells[logRow,3].Value = l.UsuarioId;
         wsLog.Cells[logRow,4].Value = l.DataEntrada.ToString("dd/MM/yyyy HH:mm");
-        wsLog.Cells[logRow,5].Value = l.DataSaida.HasValue ? l.DataSaida.Value.ToString("dd/MM/yyyy HH:mm") : "Ainda logado";
+        wsLog.Cells[logRow,5].Value = dataSaida.HasValue ? dataSaida.Value.ToString("dd/MM/yyyy HH:mm") : "Ainda logado";
         wsLog.Cells[logRow,6].Value = l.DuracaoMinutos;
         wsLog.Cells[logRow,7].Value = l.MotivoSaida ?? "—";
         wsLog.Cells[logRow,8].Value = l.StatusAcesso;
@@ -1184,50 +1259,16 @@ app.Run();
 // CLASSES — devem ficar SEMPRE após o app.Run()
 // ============================================================
 
-// 🌟 CONTROLE DO STATUS DO BOTÃO
-public static class BotaoControle
-{
-    public static bool ConfirmadoSaida { get; set; } = false;
-}
-
-// ESTADO DA PORTA (Sensor Magnético - Pino 13)
-public static class EstadoPorta
-{
-    public static string Status { get; set; } = "DESCONHECIDO"; // ABERTA, FECHADA, ALERTA_SEM_LOGIN
-    public static DateTime UltimaAtualizacao { get; set; } = DateTime.Now;
-    public static bool AlarmeSemLogin { get; set; } = false;
-}
-
-//  CONEXÃO SERIAL GLOBAL
-public static class ArduinoSerial
-{
-    public static SerialPort Porta = new SerialPort("COM7", 9600) { ReadTimeout = 150 };
-
-    public static void Inicializar()
-    {
-        TentarAbrir();
-    }
-
-    public static void TentarAbrir()
-    {
-        try {
-            if (!Porta.IsOpen) {
-                Porta.Open();
-                Console.WriteLine("[Arduino] Porta serial aberta na COM5!");
-            }
-        } catch (Exception ex) {
-            Console.WriteLine($"[Arduino] Erro ao abrir porta: {ex.Message}");
-        }
-    }
-}
-
 // --- MODELOS DE BANCO DE DADOS ---
 public class AppDbContext : DbContext {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
     public DbSet<Usuario> Usuarios { get; set; }
     public DbSet<Ferramenta> Ferramentas { get; set; }
     public DbSet<LogAcesso> LogsAcesso { get; set; }
-    public DbSet<Movimentacoes> Movimentacoes { get; set; } 
+    public DbSet<Movimentacoes> Movimentacoes { get; set; }
+    public DbSet<ComandoPendente> ComandosPendentes { get; set; }
+    public DbSet<AvisoPendente> AvisosPendentes { get; set; }
+    public DbSet<EstadoPortaRegistro> EstadoPorta { get; set; }
 }
 
 public class Usuario {
@@ -1293,6 +1334,25 @@ public class AvisoPendente {
     public bool Lido { get; set; } = false;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
+
+
+public class ComandoPendente {
+    public int Id { get; set; }
+    public string Comando { get; set; } = "";
+    public bool Executado { get; set; } = false;
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime? ExecutadoEm { get; set; }
+}
+
+public class EstadoPortaRegistro {
+    [Key] public int Id { get; set; } = 1;
+    public string Status { get; set; } = "DESCONHECIDO";
+    public bool AlarmeSemLogin { get; set; } = false;
+    public DateTime UltimaAtualizacao { get; set; } = DateTime.UtcNow;
+    public bool BotaoSaidaConfirmado { get; set; } = false;
+}
+
+public record ArduinoEventoRequest(string Evento);
 
 public record EditarUsuarioRequest(string Nome);
 public record RedefinirSenhaRequest(
